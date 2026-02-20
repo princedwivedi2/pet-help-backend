@@ -1,0 +1,723 @@
+{
+  "info": {
+    "title": "Pet Help API v1 - JSON Examples",
+    "description": "Clean JSON examples for API requests and responses",
+    "base_url": "http://localhost:8000/api/v1"
+  },
+  "auth": {
+    "register": {
+      "request": {
+        "name": "John Doe",
+        "email": "john@example.com",
+        "password": "password123",
+        "password_confirmation": "password123"
+      },
+      "response_success": {
+        "success": true,
+        "message": "User registered successfully",
+        "data": {
+          "user": {
+            "id": 1,
+            "name": "John Doe",
+            "email": "john@example.com",
+            "created_at": "2026-01-31T10:00:00.000000Z",
+            "updated_at": "2026-01-31T10:00:00.000000Z"
+          },
+          "token": "1|abc123def456ghi789jkl012mno345pqr678stu901vwx234yz"
+        },
+        "errors": null
+      }
+    },
+    "login": {
+      "request": {
+        "email": "john@example.com",
+        "password": "password123"
+      },
+      "response_success": {
+        "success": true,
+        "message": "Login successful",
+        "data": {
+          "user": {
+            "id": 1,
+            "name": "John Doe",
+            "email": "john@example.com",
+            "created_at": "2026-01-31T10:00:00.000000Z",
+            "updated_at": "2026-01-31T10:00:00.000000Z"
+          },
+          "token": "2|xyz789abc012def345ghi678jkl901mno234pqr567stu890vwx"
+        },
+        "errors": null
+      },
+      "response_error": {
+        "success": false,
+        "message": "Invalid credentials",
+        "data": null,
+        "errors": {
+          "email": ["The provided credentials are incorrect."]
+        }
+      }
+    },
+    "me": {
+      "response_success": {
+        "success": true,
+        "message": "User retrieved successfully",
+        "data": {
+          "user": {
+            "id": 1,
+            "name": "John Doe",
+            "email": "john@example.com",
+            "created_at": "2026-01-31T10:00:00.000000Z",
+            "updated_at": "2026-01-31T10:00:00.000000Z"
+          }
+        },
+        "errors": null
+      }
+    },
+    "logout": {
+      "response_success": {
+        "success": true,
+        "message": "Logged out successfully",
+        "data": null,
+        "errors": null
+      }
+    }
+  },
+  "pets": {
+    "create": {
+      "request": {
+        "name": "Buddy",
+        "species": "dog",
+        "breed": "Golden Retriever",
+        "birth_date": "2022-05-15",
+        "weight_kg": 28.5,
+        "medical_notes": "Allergic to chicken"
+      },
+      "response_success": {
+        "success": true,
+        "message": "Pet created successfully",
+        "data": {
+          "pet": {
+            "id": 1,
+            "user_id": 1,
+            "name": "Buddy",
+            "species": "dog",
+            "breed": "Golden Retriever",
+            "birth_date": "2022-05-15",
+            "weight_kg": "28.50",
+            "photo_url": null,
+            "medical_notes": "Allergic to chicken",
+            "created_at": "2026-01-31T10:15:00.000000Z",
+            "updated_at": "2026-01-31T10:15:00.000000Z"
+          }
+        },
+        "errors": null
+      },
+      "response_validation_error": {
+        "success": false,
+        "message": "Validation failed",
+        "data": null,
+        "errors": {
+          "name": ["The name field is required."],
+          "species": ["The species field is required."]
+        }
+      },
+      "response_limit_exceeded": {
+        "success": false,
+        "message": "Maximum pets limit reached",
+        "data": null,
+        "errors": {
+          "pets": ["You cannot have more than 10 pets."]
+        }
+      }
+    },
+    "list": {
+      "response_success": {
+        "success": true,
+        "message": "Pets retrieved successfully",
+        "data": {
+          "pets": [
+            {
+              "id": 1,
+              "name": "Buddy",
+              "species": "dog",
+              "breed": "Golden Retriever",
+              "birth_date": "2022-05-15",
+              "weight_kg": "28.50",
+              "medical_notes": "Allergic to chicken"
+            },
+            {
+              "id": 2,
+              "name": "Whiskers",
+              "species": "cat",
+              "breed": "Persian",
+              "birth_date": "2021-03-10",
+              "weight_kg": "4.20",
+              "medical_notes": null
+            }
+          ]
+        },
+        "errors": null
+      }
+    },
+    "show": {
+      "response_success": {
+        "success": true,
+        "message": "Pet retrieved successfully",
+        "data": {
+          "pet": {
+            "id": 1,
+            "user_id": 1,
+            "name": "Buddy",
+            "species": "dog",
+            "breed": "Golden Retriever",
+            "birth_date": "2022-05-15",
+            "weight_kg": "28.50",
+            "photo_url": null,
+            "medical_notes": "Allergic to chicken",
+            "created_at": "2026-01-31T10:15:00.000000Z",
+            "updated_at": "2026-01-31T10:15:00.000000Z"
+          }
+        },
+        "errors": null
+      },
+      "response_not_found": {
+        "success": false,
+        "message": "Pet not found",
+        "data": null,
+        "errors": {
+          "pet": ["Pet not found or does not belong to you."]
+        }
+      }
+    },
+    "update": {
+      "request": {
+        "name": "Buddy Jr",
+        "weight_kg": 30.2
+      },
+      "response_success": {
+        "success": true,
+        "message": "Pet updated successfully",
+        "data": {
+          "pet": {
+            "id": 1,
+            "user_id": 1,
+            "name": "Buddy Jr",
+            "species": "dog",
+            "breed": "Golden Retriever",
+            "birth_date": "2022-05-15",
+            "weight_kg": "30.20",
+            "photo_url": null,
+            "medical_notes": "Allergic to chicken",
+            "created_at": "2026-01-31T10:15:00.000000Z",
+            "updated_at": "2026-01-31T10:30:00.000000Z"
+          }
+        },
+        "errors": null
+      }
+    },
+    "delete": {
+      "response_success": {
+        "success": true,
+        "message": "Pet deleted successfully",
+        "data": null,
+        "errors": null
+      }
+    }
+  },
+  "emergency_guides": {
+    "categories": {
+      "response_success": {
+        "success": true,
+        "message": "Categories retrieved successfully",
+        "data": {
+          "categories": [
+            {
+              "id": 1,
+              "name": "Poisoning",
+              "slug": "poisoning",
+              "icon": "poison",
+              "description": "Emergency guides for pet poisoning incidents"
+            },
+            {
+              "id": 2,
+              "name": "Injuries",
+              "slug": "injuries", 
+              "icon": "bandage",
+              "description": "First aid for pet injuries and wounds"
+            },
+            {
+              "id": 3,
+              "name": "Breathing Issues",
+              "slug": "breathing",
+              "icon": "lungs",
+              "description": "Emergency care for respiratory problems"
+            }
+          ]
+        },
+        "errors": null
+      }
+    },
+    "list": {
+      "query_params": {
+        "category_id": 1
+      },
+      "response_success": {
+        "success": true,
+        "message": "Guides retrieved successfully",
+        "data": {
+          "guides": [
+            {
+              "id": 1,
+              "category_id": 1,
+              "title": "Chocolate Poisoning in Dogs",
+              "slug": "chocolate-poisoning-dogs",
+              "summary": "Emergency steps when your dog consumes chocolate",
+              "applicable_species": ["dog"],
+              "severity_level": "high",
+              "estimated_read_minutes": 3,
+              "category": {
+                "id": 1,
+                "name": "Poisoning",
+                "slug": "poisoning"
+              }
+            }
+          ]
+        },
+        "errors": null
+      }
+    },
+    "show": {
+      "response_success": {
+        "success": true,
+        "message": "Guide retrieved successfully",
+        "data": {
+          "guide": {
+            "id": 1,
+            "category_id": 1,
+            "title": "Chocolate Poisoning in Dogs",
+            "slug": "chocolate-poisoning-dogs",
+            "summary": "Emergency steps when your dog consumes chocolate",
+            "content": {
+              "steps": [
+                "Do not induce vomiting unless instructed by a vet",
+                "Call your veterinarian or emergency clinic immediately",
+                "Provide details: type of chocolate, amount, and time consumed"
+              ],
+              "warning": "Dark chocolate and baking chocolate are more toxic",
+              "symptoms": ["Vomiting", "Diarrhea", "Restlessness", "Rapid breathing"]
+            },
+            "applicable_species": ["dog"],
+            "severity_level": "high",
+            "estimated_read_minutes": 3,
+            "is_published": true,
+            "category": {
+              "id": 1,
+              "name": "Poisoning",
+              "slug": "poisoning"
+            }
+          }
+        },
+        "errors": null
+      }
+    }
+  },
+  "vets": {
+    "search": {
+      "query_params": {
+        "lat": 40.7128,
+        "lng": -74.0060,
+        "radius_km": 10,
+        "available_only": false,
+        "sort_by": "distance"
+      },
+      "response_success": {
+        "success": true,
+        "message": "Vets retrieved successfully",
+        "data": {
+          "vets": [
+            {
+              "uuid": "550e8400-e29b-41d4-a716-446655440000",
+              "clinic_name": "City Pet Hospital",
+              "vet_name": "Dr. Sarah Johnson",
+              "phone": "+1-555-0123",
+              "address": "123 Main Street",
+              "city": "New York",
+              "latitude": "40.7589",
+              "longitude": "-73.9851",
+              "is_emergency_available": true,
+              "is_24_hours": false,
+              "is_verified": true,
+              "rating": "4.8",
+              "review_count": 127,
+              "distance_km": 2.3
+            },
+            {
+              "uuid": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+              "clinic_name": "Emergency Pet Care",
+              "vet_name": "Dr. Michael Chen",
+              "phone": "+1-555-0456",
+              "address": "456 Oak Avenue",
+              "city": "New York",
+              "latitude": "40.7505",
+              "longitude": "-73.9934",
+              "is_emergency_available": true,
+              "is_24_hours": true,
+              "is_verified": true,
+              "rating": "4.6",
+              "review_count": 89,
+              "distance_km": 3.7
+            }
+          ],
+          "search_params": {
+            "latitude": 40.7128,
+            "longitude": -74.0060,
+            "radius_km": 10
+          }
+        },
+        "errors": null
+      }
+    },
+    "search_emergency": {
+      "query_params": {
+        "lat": 40.7128,
+        "lng": -74.0060,
+        "radius_km": 25,
+        "emergency_only": true
+      },
+      "response_success": {
+        "success": true,
+        "message": "Vets retrieved successfully",
+        "data": {
+          "vets": [
+            {
+              "uuid": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+              "clinic_name": "Emergency Pet Care",
+              "vet_name": "Dr. Michael Chen",
+              "phone": "+1-555-0456",
+              "address": "456 Oak Avenue",
+              "city": "New York",
+              "is_emergency_available": true,
+              "is_24_hours": true,
+              "distance_km": 3.7
+            }
+          ]
+        },
+        "errors": null
+      }
+    },
+    "show": {
+      "response_success": {
+        "success": true,
+        "message": "Vet retrieved successfully",
+        "data": {
+          "vet": {
+            "uuid": "550e8400-e29b-41d4-a716-446655440000",
+            "clinic_name": "City Pet Hospital",
+            "vet_name": "Dr. Sarah Johnson",
+            "phone": "+1-555-0123",
+            "email": "contact@citypethospital.com",
+            "address": "123 Main Street",
+            "city": "New York",
+            "state": "NY",
+            "postal_code": "10001",
+            "latitude": "40.7589",
+            "longitude": "-73.9851",
+            "services": ["surgery", "vaccination", "dental", "emergency"],
+            "accepted_species": ["dog", "cat", "bird", "rabbit"],
+            "is_emergency_available": true,
+            "is_24_hours": false,
+            "is_verified": true,
+            "rating": "4.8",
+            "review_count": 127,
+            "availabilities": [
+              {
+                "day_of_week": 1,
+                "open_time": "08:00:00",
+                "close_time": "18:00:00",
+                "is_emergency_hours": false
+              },
+              {
+                "day_of_week": 2,
+                "open_time": "08:00:00",
+                "close_time": "18:00:00",
+                "is_emergency_hours": false
+              }
+            ]
+          }
+        },
+        "errors": null
+      }
+    }
+  },
+  "sos": {
+    "create": {
+      "request": {
+        "pet_id": 1,
+        "latitude": 40.7128,
+        "longitude": -74.0060,
+        "address": "123 Main Street, New York, NY",
+        "description": "My dog ate chocolate about 30 minutes ago. He is vomiting and appears restless.",
+        "emergency_type": "poisoning"
+      },
+      "response_success": {
+        "success": true,
+        "message": "SOS request created successfully",
+        "data": {
+          "sos": {
+            "uuid": "123e4567-e89b-12d3-a456-426614174000",
+            "user_id": 1,
+            "pet_id": 1,
+            "latitude": "40.71280000",
+            "longitude": "-74.00600000",
+            "address": "123 Main Street, New York, NY",
+            "description": "My dog ate chocolate about 30 minutes ago. He is vomiting and appears restless.",
+            "emergency_type": "poisoning",
+            "status": "pending",
+            "assigned_vet_id": null,
+            "acknowledged_at": null,
+            "completed_at": null,
+            "resolution_notes": null,
+            "created_at": "2026-01-31T11:00:00.000000Z",
+            "updated_at": "2026-01-31T11:00:00.000000Z",
+            "pet": {
+              "id": 1,
+              "name": "Buddy",
+              "species": "dog"
+            },
+            "user": {
+              "id": 1,
+              "name": "John Doe",
+              "email": "john@example.com"
+            }
+          },
+          "notification": {
+            "vets_notified": 3,
+            "vets": [
+              {
+                "uuid": "550e8400-e29b-41d4-a716-446655440000",
+                "clinic_name": "City Pet Hospital",
+                "distance_km": 2.3
+              }
+            ]
+          }
+        },
+        "errors": null
+      },
+      "response_rate_limit": {
+        "success": false,
+        "message": "Rate limit exceeded",
+        "data": null,
+        "errors": {
+          "sos": ["You can only create 5 SOS requests per hour. Please wait before creating another."]
+        }
+      },
+      "response_active_exists": {
+        "success": false,
+        "message": "Active SOS exists",
+        "data": {
+          "active_sos": {
+            "uuid": "123e4567-e89b-12d3-a456-426614174000",
+            "status": "pending",
+            "created_at": "2026-01-31T11:00:00.000000Z"
+          }
+        },
+        "errors": {
+          "sos": ["You already have an active SOS request. Please complete or cancel it first."]
+        }
+      }
+    },
+    "active": {
+      "response_success_with_sos": {
+        "success": true,
+        "message": "Active SOS retrieved successfully",
+        "data": {
+          "sos": {
+            "uuid": "123e4567-e89b-12d3-a456-426614174000",
+            "pet_id": 1,
+            "latitude": "40.71280000",
+            "longitude": "-74.00600000",
+            "address": "123 Main Street, New York, NY",
+            "description": "My dog ate chocolate about 30 minutes ago. He is vomiting and appears restless.",
+            "emergency_type": "poisoning",
+            "status": "pending",
+            "created_at": "2026-01-31T11:00:00.000000Z"
+          }
+        },
+        "errors": null
+      },
+      "response_success_no_sos": {
+        "success": true,
+        "message": "No active SOS request",
+        "data": {
+          "sos": null
+        },
+        "errors": null
+      }
+    },
+    "cancel": {
+      "request": {
+        "status": "cancelled",
+        "resolution_notes": "False alarm - pet is fine"
+      },
+      "response_success": {
+        "success": true,
+        "message": "SOS status updated successfully",
+        "data": {
+          "sos": {
+            "uuid": "123e4567-e89b-12d3-a456-426614174000",
+            "status": "cancelled",
+            "resolution_notes": "False alarm - pet is fine",
+            "completed_at": "2026-01-31T11:30:00.000000Z"
+          }
+        },
+        "errors": null
+      }
+    },
+    "complete": {
+      "request": {
+        "status": "completed",
+        "resolution_notes": "Vet treated the pet successfully. Given activated charcoal and fluids."
+      },
+      "response_success": {
+        "success": true,
+        "message": "SOS status updated successfully",
+        "data": {
+          "sos": {
+            "uuid": "123e4567-e89b-12d3-a456-426614174000",
+            "status": "completed",
+            "resolution_notes": "Vet treated the pet successfully. Given activated charcoal and fluids.",
+            "completed_at": "2026-01-31T12:45:00.000000Z"
+          }
+        },
+        "errors": null
+      }
+    }
+  },
+  "incidents": {
+    "list": {
+      "query_params": {
+        "pet_id": 1,
+        "status": "open",
+        "from_date": "2025-01-01",
+        "to_date": "2026-12-31",
+        "per_page": 15
+      },
+      "response_success": {
+        "success": true,
+        "message": "Incidents retrieved successfully",
+        "data": {
+          "incidents": [
+            {
+              "uuid": "987fcdeb-51a2-43d1-9c67-123456789abc",
+              "user_id": 1,
+              "pet_id": 1,
+              "sos_request_id": 1,
+              "title": "SOS Emergency: Poisoning",
+              "description": "My dog ate chocolate about 30 minutes ago. He is vomiting and appears restless.",
+              "incident_type": "emergency",
+              "status": "resolved",
+              "incident_date": "2026-01-31",
+              "notes": "Treated by Dr. Sarah Johnson. Pet recovered fully.",
+              "created_at": "2026-01-31T11:00:00.000000Z"
+            },
+            {
+              "uuid": "456def78-90ab-12cd-34ef-567890123456",
+              "user_id": 1,
+              "pet_id": 1,
+              "title": "Annual Checkup",
+              "description": "Routine annual health examination",
+              "incident_type": "checkup",
+              "status": "resolved",
+              "incident_date": "2026-01-15",
+              "created_at": "2026-01-15T09:30:00.000000Z"
+            }
+          ],
+          "pagination": {
+            "current_page": 1,
+            "last_page": 1,
+            "per_page": 15,
+            "total": 2
+          }
+        },
+        "errors": null
+      }
+    },
+    "show": {
+      "response_success": {
+        "success": true,
+        "message": "Incident retrieved successfully",
+        "data": {
+          "incident": {
+            "uuid": "987fcdeb-51a2-43d1-9c67-123456789abc",
+            "user_id": 1,
+            "pet_id": 1,
+            "sos_request_id": 1,
+            "vet_profile_id": 1,
+            "title": "SOS Emergency: Poisoning",
+            "description": "My dog ate chocolate about 30 minutes ago. He is vomiting and appears restless.",
+            "incident_type": "emergency",
+            "status": "resolved",
+            "incident_date": "2026-01-31",
+            "notes": "Treated by Dr. Sarah Johnson. Pet recovered fully.",
+            "created_at": "2026-01-31T11:00:00.000000Z",
+            "updated_at": "2026-01-31T12:45:00.000000Z",
+            "pet": {
+              "id": 1,
+              "name": "Buddy",
+              "species": "dog"
+            },
+            "vet_profile": {
+              "uuid": "550e8400-e29b-41d4-a716-446655440000",
+              "clinic_name": "City Pet Hospital",
+              "vet_name": "Dr. Sarah Johnson"
+            }
+          }
+        },
+        "errors": null
+      }
+    }
+  },
+  "common_error_responses": {
+    "unauthorized": {
+      "success": false,
+      "message": "Unauthorized",
+      "data": null,
+      "errors": {
+        "auth": ["Authentication token required or invalid."]
+      }
+    },
+    "forbidden": {
+      "success": false,
+      "message": "Forbidden",
+      "data": null,
+      "errors": {
+        "access": ["You do not have permission to access this resource."]
+      }
+    },
+    "not_found": {
+      "success": false,
+      "message": "Resource not found",
+      "data": null,
+      "errors": {
+        "resource": ["The requested resource was not found."]
+      }
+    },
+    "validation_error": {
+      "success": false,
+      "message": "Validation failed",
+      "data": null,
+      "errors": {
+        "field_name": ["The field name is required."],
+        "email": ["The email must be a valid email address."]
+      }
+    },
+    "server_error": {
+      "success": false,
+      "message": "Internal server error",
+      "data": null,
+      "errors": {
+        "server": ["An unexpected error occurred. Please try again later."]
+      }
+    }
+  }
+}

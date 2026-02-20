@@ -1,0 +1,359 @@
+{
+    "info": {
+        "name": "Pet Help API v1",
+        "description": "MVP API endpoints for Pet Help application",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://localhost:8001/api/v1"
+        },
+        {
+            "key": "token",
+            "value": ""
+        }
+    ],
+    "item": [
+        {
+            "name": "Auth",
+            "item": [
+                {
+                    "name": "Register",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {"key": "Accept", "value": "application/json"},
+                            {"key": "Content-Type", "value": "application/json"}
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"John Doe\",\n    \"email\": \"john@example.com\",\n    \"password\": \"Password123\",\n    \"password_confirmation\": \"Password123\"\n}"
+                        },
+                        "url": "{{base_url}}/auth/register"
+                    }
+                },
+                {
+                    "name": "Login",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "var jsonData = pm.response.json();",
+                                    "if (jsonData.data && jsonData.data.token) {",
+                                    "    pm.collectionVariables.set('token', jsonData.data.token);",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {"key": "Accept", "value": "application/json"},
+                            {"key": "Content-Type", "value": "application/json"}
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"email\": \"john@example.com\",\n    \"password\": \"Password123\"\n}"
+                        },
+                        "url": "{{base_url}}/auth/login"
+                    }
+                },
+                {
+                    "name": "Get Current User",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {"key": "Accept", "value": "application/json"},
+                            {"key": "Authorization", "value": "Bearer {{token}}"}
+                        ],
+                        "url": "{{base_url}}/auth/me"
+                    }
+                },
+                {
+                    "name": "Logout",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {"key": "Accept", "value": "application/json"},
+                            {"key": "Authorization", "value": "Bearer {{token}}"}
+                        ],
+                        "url": "{{base_url}}/auth/logout"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Pets",
+            "item": [
+                {
+                    "name": "Create Pet",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {"key": "Accept", "value": "application/json"},
+                            {"key": "Content-Type", "value": "application/json"},
+                            {"key": "Authorization", "value": "Bearer {{token}}"}
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Buddy\",\n    \"species\": \"dog\",\n    \"breed\": \"Golden Retriever\",\n    \"birth_date\": \"2022-05-15\",\n    \"weight_kg\": 28.5,\n    \"medical_notes\": \"Allergic to chicken\"\n}"
+                        },
+                        "url": "{{base_url}}/pets"
+                    }
+                },
+                {
+                    "name": "List Pets",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {"key": "Accept", "value": "application/json"},
+                            {"key": "Authorization", "value": "Bearer {{token}}"}
+                        ],
+                        "url": "{{base_url}}/pets"
+                    }
+                },
+                {
+                    "name": "Get Pet",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {"key": "Accept", "value": "application/json"},
+                            {"key": "Authorization", "value": "Bearer {{token}}"}
+                        ],
+                        "url": "{{base_url}}/pets/1"
+                    }
+                },
+                {
+                    "name": "Update Pet",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {"key": "Accept", "value": "application/json"},
+                            {"key": "Content-Type", "value": "application/json"},
+                            {"key": "Authorization", "value": "Bearer {{token}}"}
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Buddy Jr\",\n    \"weight_kg\": 30.2\n}"
+                        },
+                        "url": "{{base_url}}/pets/1"
+                    }
+                },
+                {
+                    "name": "Delete Pet",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {"key": "Accept", "value": "application/json"},
+                            {"key": "Authorization", "value": "Bearer {{token}}"}
+                        ],
+                        "url": "{{base_url}}/pets/1"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Emergency Guides",
+            "item": [
+                {
+                    "name": "List Categories",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {"key": "Accept", "value": "application/json"}
+                        ],
+                        "url": "{{base_url}}/emergency-categories"
+                    }
+                },
+                {
+                    "name": "List Guides",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {"key": "Accept", "value": "application/json"}
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/guides?category_id=1",
+                            "host": ["{{base_url}}"],
+                            "path": ["guides"],
+                            "query": [
+                                {"key": "category_id", "value": "1"}
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Guide",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {"key": "Accept", "value": "application/json"}
+                        ],
+                        "url": "{{base_url}}/guides/1"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Vets",
+            "item": [
+                {
+                    "name": "Search Vets",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {"key": "Accept", "value": "application/json"}
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/vets?lat=40.7128&lng=-74.0060&radius_km=10&available_only=false&sort_by=distance",
+                            "host": ["{{base_url}}"],
+                            "path": ["vets"],
+                            "query": [
+                                {"key": "lat", "value": "40.7128"},
+                                {"key": "lng", "value": "-74.0060"},
+                                {"key": "radius_km", "value": "10"},
+                                {"key": "available_only", "value": "false"},
+                                {"key": "sort_by", "value": "distance"}
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Search Emergency Vets",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {"key": "Accept", "value": "application/json"}
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/vets?lat=40.7128&lng=-74.0060&radius_km=25&emergency_only=true",
+                            "host": ["{{base_url}}"],
+                            "path": ["vets"],
+                            "query": [
+                                {"key": "lat", "value": "40.7128"},
+                                {"key": "lng", "value": "-74.0060"},
+                                {"key": "radius_km", "value": "25"},
+                                {"key": "emergency_only", "value": "true"}
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Vet by UUID",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {"key": "Accept", "value": "application/json"}
+                        ],
+                        "url": "{{base_url}}/vets/{{vet_uuid}}"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "SOS",
+            "item": [
+                {
+                    "name": "Create SOS Request",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {"key": "Accept", "value": "application/json"},
+                            {"key": "Content-Type", "value": "application/json"},
+                            {"key": "Authorization", "value": "Bearer {{token}}"}
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"pet_id\": 1,\n    \"latitude\": 40.7128,\n    \"longitude\": -74.0060,\n    \"address\": \"123 Main Street, New York, NY\",\n    \"description\": \"My dog ate chocolate about 30 minutes ago. He is vomiting and appears restless.\",\n    \"emergency_type\": \"poisoning\"\n}"
+                        },
+                        "url": "{{base_url}}/sos"
+                    }
+                },
+                {
+                    "name": "Get Active SOS",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {"key": "Accept", "value": "application/json"},
+                            {"key": "Authorization", "value": "Bearer {{token}}"}
+                        ],
+                        "url": "{{base_url}}/sos/active"
+                    }
+                },
+                {
+                    "name": "Cancel SOS",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {"key": "Accept", "value": "application/json"},
+                            {"key": "Content-Type", "value": "application/json"},
+                            {"key": "Authorization", "value": "Bearer {{token}}"}
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"status\": \"cancelled\",\n    \"resolution_notes\": \"False alarm - pet is fine\"\n}"
+                        },
+                        "url": "{{base_url}}/sos/{{sos_uuid}}/status"
+                    }
+                },
+                {
+                    "name": "Complete SOS",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {"key": "Accept", "value": "application/json"},
+                            {"key": "Content-Type", "value": "application/json"},
+                            {"key": "Authorization", "value": "Bearer {{token}}"}
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"status\": \"completed\",\n    \"resolution_notes\": \"Vet treated the pet successfully. Given activated charcoal and fluids.\"\n}"
+                        },
+                        "url": "{{base_url}}/sos/{{sos_uuid}}/status"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Incidents",
+            "item": [
+                {
+                    "name": "List Incidents",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {"key": "Accept", "value": "application/json"},
+                            {"key": "Authorization", "value": "Bearer {{token}}"}
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/incidents?pet_id=1&status=open&from_date=2025-01-01&to_date=2026-12-31&per_page=15",
+                            "host": ["{{base_url}}"],
+                            "path": ["incidents"],
+                            "query": [
+                                {"key": "pet_id", "value": "1"},
+                                {"key": "status", "value": "open"},
+                                {"key": "from_date", "value": "2025-01-01"},
+                                {"key": "to_date", "value": "2026-12-31"},
+                                {"key": "per_page", "value": "15"}
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Incident",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {"key": "Accept", "value": "application/json"},
+                            {"key": "Authorization", "value": "Bearer {{token}}"}
+                        ],
+                        "url": "{{base_url}}/incidents/{{incident_uuid}}"
+                    }
+                }
+            ]
+        }
+    ]
+}
