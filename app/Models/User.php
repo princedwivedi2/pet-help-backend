@@ -19,11 +19,18 @@ class User extends Authenticatable implements MustVerifyEmail
         'email',
         'password',
         'role',
+        'phone',
+        'avatar',
     ];
 
     protected $hidden = [
         'password',
         'remember_token',
+    ];
+
+    protected $guarded = [
+        'id',
+        'email_verified_at',
     ];
 
     protected function casts(): array

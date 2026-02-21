@@ -33,8 +33,10 @@ class GuideController extends Controller
             $query->byCategory($request->category_id);
         }
 
+        $perPage = min((int) ($request->per_page ?? 20), 50);
+
         $guides = $query->orderBy('title')
-            ->get([
+            ->paginate($perPage, [
                 'id',
                 'category_id',
                 'title',
@@ -46,7 +48,13 @@ class GuideController extends Controller
             ]);
 
         return $this->success('Guides retrieved successfully', [
-            'guides' => $guides,
+            'guides'     => $guides->items(),
+            'pagination' => [
+                'current_page' => $guides->currentPage(),
+                'last_page'    => $guides->lastPage(),
+                'per_page'     => $guides->perPage(),
+                'total'        => $guides->total(),
+            ],
         ]);
     }
 

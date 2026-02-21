@@ -28,10 +28,23 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // Register named middleware aliases
         $middleware->alias([
-            'role' => \App\Http\Middleware\EnsureRole::class,
+            'role'     => \App\Http\Middleware\EnsureRole::class,
+            'verified' => \App\Http\Middleware\EnsureEmailVerified::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // Rate limiting
+        $exceptions->render(function (\Illuminate\Http\Exceptions\ThrottleRequestsException $e, Request $request) {
+            if ($request->is('api/*') || $request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Too many requests. Please slow down.',
+                    'data' => null,
+                    'errors' => ['rate_limit' => ['You have exceeded the rate limit. Try again in ' . $e->getHeaders()['Retry-After'] . ' seconds.']],
+                ], 429);
+            }
+        });
+
         $exceptions->render(function (ValidationException $e, Request $request) {
             if ($request->is('api/*') || $request->expectsJson()) {
                 return response()->json([

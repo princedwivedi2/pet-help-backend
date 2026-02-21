@@ -14,14 +14,27 @@ use Illuminate\Support\Facades\Route;
 
 // ─── Auth ───────────────────────────────────────────────────────────
 Route::prefix('auth')->group(function () {
+    // Public: throttled auth endpoints
     Route::middleware('throttle:5,1')->group(function () {
         Route::post('register', [AuthController::class, 'register']);
         Route::post('login', [AuthController::class, 'login']);
+        Route::post('forgot-password', [AuthController::class, 'forgotPassword']);
+        Route::post('reset-password', [AuthController::class, 'resetPassword']);
     });
 
+    // Email verification (no verified middleware here, obviously)
+    Route::get('email/verify/{id}/{hash}', [AuthController::class, 'verifyEmail'])
+        ->middleware('signed')
+        ->name('verification.verify');
+
+    // Authenticated auth endpoints
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('me', [AuthController::class, 'me']);
         Route::post('logout', [AuthController::class, 'logout']);
+        Route::post('email/resend', [AuthController::class, 'resendVerification'])
+            ->middleware('throttle:3,1');
+        Route::put('change-password', [AuthController::class, 'changePassword']);
+        Route::put('profile', [AuthController::class, 'updateProfile']);
     });
 });
 
@@ -53,8 +66,8 @@ Route::prefix('community')->group(function () {
     Route::get('posts/{uuid}/replies', [CommunityController::class, 'postReplies']);
 });
 
-// ─── Authenticated ──────────────────────────────────────────────────
-Route::middleware('auth:sanctum')->group(function () {
+// ─── Authenticated (verified email required) ────────────────────────
+Route::middleware(['auth:sanctum', 'verified'])->group(function () {
     // Pets
     Route::apiResource('pets', PetController::class);
 
@@ -72,21 +85,31 @@ Route::middleware('auth:sanctum')->group(function () {
     // Vet Profile
     Route::get('vet/profile', [VetOnboardingController::class, 'profile']);
 
-    // Blog: Comments & Likes
-    Route::post('blog/posts/{uuid}/comments', [BlogController::class, 'storeComment']);
-    Route::post('blog/posts/{uuid}/like', [BlogController::class, 'toggleLike']);
+    // Blog: Comments & Likes (rate-limited)
+    Route::middleware('throttle:30,1')->group(function () {
+        Route::post('blog/posts/{uuid}/comments', [BlogController::class, 'storeComment']);
+        Route::post('blog/posts/{uuid}/like', [BlogController::class, 'toggleLike']);
+    });
 
-    // Community: Posts, Replies, Votes, Reports
-    Route::post('community/posts', [CommunityController::class, 'storePost']);
-    Route::delete('community/posts/{uuid}', [CommunityController::class, 'destroyPost']);
-    Route::post('community/posts/{uuid}/replies', [CommunityController::class, 'storeReply']);
-    Route::delete('community/replies/{uuid}', [CommunityController::class, 'destroyReply']);
-    Route::post('community/votes', [CommunityController::class, 'vote']);
-    Route::post('community/reports', [CommunityController::class, 'report']);
+    // Community: Posts, Replies, Votes, Reports (rate-limited)
+    Route::middleware('throttle:30,1')->group(function () {
+        Route::post('community/posts', [CommunityController::class, 'storePost']);
+        Route::delete('community/posts/{uuid}', [CommunityController::class, 'destroyPost']);
+        Route::post('community/posts/{uuid}/replies', [CommunityController::class, 'storeReply']);
+        Route::delete('community/replies/{uuid}', [CommunityController::class, 'destroyReply']);
+    });
+
+    Route::middleware('throttle:20,1')->group(function () {
+        Route::post('community/votes', [CommunityController::class, 'vote']);
+    });
+
+    Route::middleware('throttle:10,1')->group(function () {
+        Route::post('community/reports', [CommunityController::class, 'report']);
+    });
 });
 
 // ─── Admin ──────────────────────────────────────────────────────────
-Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(function () {
+Route::middleware(['auth:sanctum', 'verified', 'role:admin'])->prefix('admin')->group(function () {
     // Dashboard
     Route::get('stats', [AdminController::class, 'stats']);
     Route::get('users', [AdminController::class, 'users']);

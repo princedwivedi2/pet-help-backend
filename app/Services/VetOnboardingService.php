@@ -22,10 +22,11 @@ class VetOnboardingService
     {
         return DB::transaction(function () use ($data) {
             // Create user account with vet role
+            // Password is hashed automatically via User model 'hashed' cast
             $user = User::create([
                 'name'     => $data['full_name'],
                 'email'    => $data['email'],
-                'password' => Hash::make($data['password']),
+                'password' => $data['password'],
                 'role'     => 'vet',
             ]);
 

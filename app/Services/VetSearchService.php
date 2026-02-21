@@ -17,7 +17,10 @@ class VetSearchService
         bool $emergencyOnly = false,
         bool $availableOnly = false,
         ?string $sortBy = 'distance',
-        int $limit = 20
+        int $limit = 20,
+        ?string $city = null,
+        ?string $specialization = null,
+        ?float $minRating = null
     ): Collection {
         $query = VetProfile::query()
             ->active()
@@ -43,6 +46,18 @@ class VetSearchService
             });
         }
 
+        if ($city) {
+            $query->where('city', 'LIKE', '%' . $city . '%');
+        }
+
+        if ($specialization) {
+            $query->whereJsonContains('services', $specialization);
+        }
+
+        if ($minRating !== null) {
+            $query->where('rating', '>=', $minRating);
+        }
+
         $query = match ($sortBy) {
             'rating' => $query->orderByDesc('rating')->orderBy('distance_km'),
             'distance' => $query->orderBy('distance_km'),
@@ -63,18 +78,17 @@ class VetSearchService
 
     private function haversineFormula(float $latitude, float $longitude): string
     {
-        // Haversine formula for calculating distance between two points
-        return sprintf(
-            '(%d * ACOS(
-                COS(RADIANS(%f)) * COS(RADIANS(latitude)) *
-                COS(RADIANS(longitude) - RADIANS(%f)) +
-                SIN(RADIANS(%f)) * SIN(RADIANS(latitude))
-            ))',
-            self::EARTH_RADIUS_KM,
-            $latitude,
-            $longitude,
-            $latitude
-        );
+        // Use number_format to avoid locale-dependent decimal separators
+        $lat = number_format($latitude, 8, '.', '');
+        $lng = number_format($longitude, 8, '.', '');
+
+        return "(
+            {$this::EARTH_RADIUS_KM} * ACOS(
+                COS(RADIANS({$lat})) * COS(RADIANS(latitude)) *
+                COS(RADIANS(longitude) - RADIANS({$lng})) +
+                SIN(RADIANS({$lat})) * SIN(RADIANS(latitude))
+            )
+        )";
     }
 
     public function calculateDistance(

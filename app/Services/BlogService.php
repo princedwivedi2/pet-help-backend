@@ -252,21 +252,27 @@ class BlogService
 
     public function toggleLike(BlogPost $post, int $userId): array
     {
-        $existing = BlogLike::where('blog_post_id', $post->id)
-            ->where('user_id', $userId)
-            ->first();
+        return DB::transaction(function () use ($post, $userId) {
+            // Lock related rows to prevent race conditions
+            $existing = BlogLike::where('blog_post_id', $post->id)
+                ->where('user_id', $userId)
+                ->lockForUpdate()
+                ->first();
 
-        if ($existing) {
-            $existing->delete();
-            return ['liked' => false, 'likes_count' => $post->likes()->count()];
-        }
+            if ($existing) {
+                $existing->delete();
+                $count = BlogLike::where('blog_post_id', $post->id)->count();
+                return ['liked' => false, 'likes_count' => $count];
+            }
 
-        BlogLike::create([
-            'blog_post_id' => $post->id,
-            'user_id'      => $userId,
-        ]);
+            BlogLike::create([
+                'blog_post_id' => $post->id,
+                'user_id'      => $userId,
+            ]);
 
-        return ['liked' => true, 'likes_count' => $post->likes()->count()];
+            $count = BlogLike::where('blog_post_id', $post->id)->count();
+            return ['liked' => true, 'likes_count' => $count];
+        });
     }
 
     public function hasUserLiked(BlogPost $post, int $userId): bool

@@ -1,10 +1,10 @@
 <?php
 
-namespace App\Http\Requests\Api\V1\Community;
+namespace App\Http\Requests\Api\V1\Blog;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-class StoreCommunityVoteRequest extends FormRequest
+class StoreTagRequest extends FormRequest
 {
     public function authorize(): bool
     {
@@ -14,9 +14,7 @@ class StoreCommunityVoteRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'votable_type' => 'required|in:post,reply',
-            'votable_uuid' => 'required|string',
+            'name' => ['required', 'string', 'max:100', 'unique:blog_tags,name'],
         ];
     }
-
 }
