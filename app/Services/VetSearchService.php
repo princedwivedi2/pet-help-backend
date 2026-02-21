@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Models\VetProfile;
 use Illuminate\Database\Eloquent\Collection;
-use Illuminate\Support\Facades\DB;
 
 class VetSearchService
 {
@@ -81,12 +80,16 @@ class VetSearchService
         // Use number_format to avoid locale-dependent decimal separators
         $lat = number_format($latitude, 8, '.', '');
         $lng = number_format($longitude, 8, '.', '');
+        $radius = self::EARTH_RADIUS_KM;
 
+        // LEAST/GREATEST clamp guards against floating-point rounding pushing ACOS arg outside [-1,1]
         return "(
-            {$this::EARTH_RADIUS_KM} * ACOS(
-                COS(RADIANS({$lat})) * COS(RADIANS(latitude)) *
-                COS(RADIANS(longitude) - RADIANS({$lng})) +
-                SIN(RADIANS({$lat})) * SIN(RADIANS(latitude))
+            {$radius} * ACOS(
+                LEAST(1, GREATEST(-1,
+                    COS(RADIANS({$lat})) * COS(RADIANS(latitude)) *
+                    COS(RADIANS(longitude) - RADIANS({$lng})) +
+                    SIN(RADIANS({$lat})) * SIN(RADIANS(latitude))
+                ))
             )
         )";
     }
