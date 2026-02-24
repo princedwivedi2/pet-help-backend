@@ -28,6 +28,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // Register named middleware aliases
         $middleware->alias([
+            'auth'     => \App\Http\Middleware\Authenticate::class,
             'role'     => \App\Http\Middleware\EnsureRole::class,
             'verified' => \App\Http\Middleware\EnsureEmailVerified::class,
         ]);

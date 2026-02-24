@@ -1,11 +1,13 @@
 <?php
 
 use App\Http\Controllers\Api\V1\AdminController;
+use App\Http\Controllers\Api\V1\AppointmentController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BlogController;
 use App\Http\Controllers\Api\V1\CommunityController;
 use App\Http\Controllers\Api\V1\GuideController;
 use App\Http\Controllers\Api\V1\IncidentController;
+use App\Http\Controllers\Api\V1\NotificationController;
 use App\Http\Controllers\Api\V1\PetController;
 use App\Http\Controllers\Api\V1\SosController;
 use App\Http\Controllers\Api\V1\VetController;
@@ -38,8 +40,9 @@ Route::prefix('auth')->group(function () {
     });
 });
 
-// ─── Vet Registration ───────────────────────────────────────────────
+// ─── Vet Registration & Application ─────────────────────────────────
 Route::middleware('throttle:3,1')->group(function () {
+    Route::post('vet/apply', [VetOnboardingController::class, 'apply']);
     Route::post('vet/register', [VetOnboardingController::class, 'register']);
 });
 
@@ -84,6 +87,25 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
 
     // Vet Profile
     Route::get('vet/profile', [VetOnboardingController::class, 'profile']);
+    Route::post('vet/documents', [VetOnboardingController::class, 'uploadDocument']);
+
+    // Appointments
+    Route::prefix('appointments')->group(function () {
+        Route::get('/', [AppointmentController::class, 'index']);
+        Route::post('/', [AppointmentController::class, 'store']);
+        Route::get('/vet', [AppointmentController::class, 'vetIndex']);
+        Route::get('/slots/{vet_uuid}', [AppointmentController::class, 'availableSlots']);
+        Route::get('/{uuid}', [AppointmentController::class, 'show']);
+        Route::put('/{uuid}/status', [AppointmentController::class, 'updateStatus']);
+    });
+
+    // Notifications
+    Route::prefix('notifications')->group(function () {
+        Route::get('/', [NotificationController::class, 'index']);
+        Route::get('/unread-count', [NotificationController::class, 'unreadCount']);
+        Route::put('/read-all', [NotificationController::class, 'markAllAsRead']);
+        Route::put('/{id}/read', [NotificationController::class, 'markAsRead']);
+    });
 
     // Blog: Comments & Likes (rate-limited)
     Route::middleware('throttle:30,1')->group(function () {
@@ -117,10 +139,28 @@ Route::middleware(['auth:sanctum', 'verified', 'role:admin'])->prefix('admin')->
     Route::get('sos', [AdminController::class, 'sosRequests']);
     Route::get('incidents', [AdminController::class, 'incidents']);
 
-    // Vet Verification
+    // Appointments (admin view — all appointments across all users)
+    Route::get('appointments', [AdminController::class, 'appointments']);
+
+    // Pets (admin view — all pets across all users)
+    Route::get('pets', [AdminController::class, 'pets']);
+
+    // Vet Verification & Management
+    Route::get('vets', [AdminController::class, 'vetsByStatus']);
     Route::get('vets/unverified', [AdminController::class, 'unverifiedVets']);
+    Route::get('vets/{uuid}', [AdminController::class, 'showVet']);
+    Route::put('vets/{uuid}/approve', [AdminController::class, 'approveVet']);
+    Route::put('vets/{uuid}/reject', [AdminController::class, 'rejectVet']);
     Route::put('vets/{uuid}/verify', [AdminController::class, 'verifyVet']);
+    Route::put('vets/{uuid}/suspend', [AdminController::class, 'suspendVet']);
+    Route::put('vets/{uuid}/reactivate', [AdminController::class, 'reactivateVet']);
     Route::get('vets/{uuid}/history', [AdminController::class, 'vetVerificationHistory']);
+
+    // Admin Metrics
+    Route::get('metrics', [AdminController::class, 'metrics']);
+    Route::get('metrics/time-series', [AdminController::class, 'timeSeries']);
+    Route::get('metrics/geo', [AdminController::class, 'geoDistribution']);
+    Route::get('recent-activity', [AdminController::class, 'recentActivity']);
 
     // Blog Admin
     Route::prefix('blog')->group(function () {

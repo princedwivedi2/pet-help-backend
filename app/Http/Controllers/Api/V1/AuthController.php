@@ -34,12 +34,16 @@ class AuthController extends Controller
             'password' => $request->password,
         ]);
 
+        // Auto-verify email for development/testing
+        // TODO: Remove this in production and uncomment the event below
+        $user->markEmailAsVerified();
+
         // Fire Registered event (sends verification email)
-        event(new Registered($user));
+        // event(new Registered($user));
 
         $token = $user->createToken('mobile-app')->plainTextToken;
 
-        return $this->created('User registered successfully. Please verify your email.', [
+        return $this->created('User registered successfully.', [
             'user' => $user,
             'token' => $token,
         ]);
@@ -60,6 +64,28 @@ class AuthController extends Controller
             return $this->unauthorized('Invalid credentials', [
                 'email' => ['The provided credentials are incorrect.'],
             ]);
+        }
+
+        // Block non-approved vets from logging in
+        if ($user->isVet()) {
+            $vetProfile = $user->vetProfile;
+
+            if (!$vetProfile || !$vetProfile->isApproved()) {
+                $status = $vetProfile?->vet_status ?? 'pending';
+                $messages = [
+                    'pending'   => 'Your vet profile is pending admin approval.',
+                    'rejected'  => 'Your vet profile has been rejected. Please contact support.',
+                    'suspended' => 'Your vet account has been suspended. Please contact support.',
+                ];
+
+                return $this->forbidden($messages[$status] ?? 'Your vet account is not active.');
+            }
+        }
+
+        // Auto-verify email for development/testing
+        // TODO: Remove this in production
+        if (!$user->hasVerifiedEmail()) {
+            $user->markEmailAsVerified();
         }
 
         $token = $user->createToken('mobile-app')->plainTextToken;

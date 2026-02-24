@@ -35,6 +35,7 @@ class VetProfile extends Model
         'is_emergency_available',
         'is_24_hours',
         'is_verified',
+        'vet_status',
         'rejection_reason',
         'verified_at',
         'verified_by',
@@ -100,6 +101,11 @@ class VetProfile extends Model
         return $this->hasMany(IncidentLog::class);
     }
 
+    public function appointments(): HasMany
+    {
+        return $this->hasMany(Appointment::class);
+    }
+
     public function scopeActive($query)
     {
         return $query->where('is_active', true);
@@ -112,12 +118,35 @@ class VetProfile extends Model
 
     public function scopeVerified($query)
     {
-        return $query->where('is_verified', true);
+        return $query->where('is_verified', true)
+            ->where('vet_status', 'approved');
     }
 
     public function scopeUnverified($query)
     {
-        return $query->where('is_verified', false);
+        return $query->where('vet_status', 'pending');
+    }
+
+    public function scopeByStatus($query, string $status)
+    {
+        return $query->where('vet_status', $status);
+    }
+
+    // ─── Helpers ────────────────────────────────────────────────────
+
+    public function isApproved(): bool
+    {
+        return $this->vet_status === 'approved';
+    }
+
+    public function isPending(): bool
+    {
+        return $this->vet_status === 'pending';
+    }
+
+    public function isSuspended(): bool
+    {
+        return $this->vet_status === 'suspended';
     }
 
     public function getRouteKeyName(): string

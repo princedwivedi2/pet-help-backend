@@ -91,6 +91,11 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(CommunityVote::class);
     }
 
+    public function appointments(): HasMany
+    {
+        return $this->hasMany(Appointment::class);
+    }
+
     public function activeSosRequest()
     {
         return $this->sosRequests()->active()->latest()->first();

@@ -11,7 +11,7 @@ class UpdateBlogPostRequest extends FormRequest
         return true;
     }
 
-    public function rules(): array
+    public function rules(): array  
     {
         return [
             'title'          => 'sometimes|string|max:191',

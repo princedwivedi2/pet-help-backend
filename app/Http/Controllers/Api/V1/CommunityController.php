@@ -12,6 +12,7 @@ use App\Http\Requests\Api\V1\Community\StoreCommunityVoteRequest;
 use App\Http\Requests\Api\V1\Community\UpdateCommunityTopicRequest;
 use App\Models\CommunityPost;
 use App\Models\CommunityReply;
+use App\Models\CommunityReport;
 use App\Models\CommunityVote;
 use App\Services\CommunityService;
 use App\Traits\ApiResponse;
@@ -334,8 +335,16 @@ class CommunityController extends Controller
     public function reports(Request $request): JsonResponse
     {
         $perPage = min((int) ($request->per_page ?? 20), 100);
+        $status = $request->query('status');
 
-        $reports = $this->communityService->getPendingReports($perPage);
+        if ($status) {
+            $reports = CommunityReport::where('status', $status)
+                ->with(['user:id,name', 'reportable'])
+                ->orderByDesc('created_at')
+                ->paginate($perPage);
+        } else {
+            $reports = $this->communityService->getPendingReports($perPage);
+        }
 
         return $this->success('Reports retrieved successfully', [
             'reports'    => $reports->items(),
