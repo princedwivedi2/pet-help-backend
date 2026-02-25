@@ -3,8 +3,6 @@
 namespace App\Http\Requests\Api\V1\Vet;
 
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Contracts\Validation\Validator;
-use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Validation\Rule;
 
 class VerifyVetRequest extends FormRequest
@@ -30,15 +28,4 @@ class VerifyVetRequest extends FormRequest
         ];
     }
 
-    protected function failedValidation(Validator $validator): void
-    {
-        throw new HttpResponseException(
-            response()->json([
-                'success' => false,
-                'message' => 'Validation failed',
-                'data'    => null,
-                'errors'  => $validator->errors(),
-            ], 422)
-        );
-    }
 }

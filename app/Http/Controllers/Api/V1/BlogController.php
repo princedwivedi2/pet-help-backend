@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\Blog\StoreBlogCategoryRequest;
 use App\Http\Requests\Api\V1\Blog\StoreBlogCommentRequest;
 use App\Http\Requests\Api\V1\Blog\StoreBlogPostRequest;
+use App\Http\Requests\Api\V1\Blog\StoreTagRequest;
 use App\Http\Requests\Api\V1\Blog\UpdateBlogCategoryRequest;
 use App\Http\Requests\Api\V1\Blog\UpdateBlogPostRequest;
 use App\Services\BlogService;
@@ -298,13 +299,9 @@ class BlogController extends Controller
         return $this->success('Tags retrieved successfully', ['tags' => $tags]);
     }
 
-    public function storeTag(Request $request): JsonResponse
+    public function storeTag(StoreTagRequest $request): JsonResponse
     {
-        $request->validate([
-            'name' => 'required|string|max:100|unique:blog_tags,name',
-        ]);
-
-        $tag = $this->blogService->createTag($request->only('name'));
+        $tag = $this->blogService->createTag($request->validated());
 
         return $this->created('Tag created successfully', ['tag' => $tag]);
     }

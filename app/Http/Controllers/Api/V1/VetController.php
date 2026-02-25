@@ -25,6 +25,9 @@ class VetController extends Controller
             emergencyOnly: $request->boolean('emergency_only', false),
             availableOnly: $request->boolean('available_only', false),
             sortBy: $request->sort_by ?? 'distance',
+            city: $request->city,
+            specialization: $request->specialization,
+            minRating: $request->min_rating ? (float) $request->min_rating : null,
         );
 
         $vetsData = $vets->map(function ($vet) {

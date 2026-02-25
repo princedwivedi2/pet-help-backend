@@ -18,7 +18,8 @@ class User extends Authenticatable implements MustVerifyEmail
         'name',
         'email',
         'password',
-        'role',
+        'phone',
+        'avatar',
     ];
 
     protected $hidden = [
@@ -82,6 +83,11 @@ class User extends Authenticatable implements MustVerifyEmail
     public function communityVotes(): HasMany
     {
         return $this->hasMany(CommunityVote::class);
+    }
+
+    public function appointments(): HasMany
+    {
+        return $this->hasMany(Appointment::class);
     }
 
     public function activeSosRequest()

@@ -13,7 +13,6 @@ class SosRequest extends Model
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
-        'uuid',
         'user_id',
         'pet_id',
         'latitude',

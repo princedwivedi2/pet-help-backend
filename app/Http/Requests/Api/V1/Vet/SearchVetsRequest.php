@@ -20,6 +20,9 @@ class SearchVetsRequest extends FormRequest
             'radius_km' => ['nullable', 'numeric', 'min:1', 'max:100'],
             'available_only' => ['nullable', 'boolean'],
             'emergency_only' => ['nullable', 'boolean'],
+            'city' => ['nullable', 'string', 'max:100'],
+            'specialization' => ['nullable', 'string', 'max:100'],
+            'min_rating' => ['nullable', 'numeric', 'min:0', 'max:5'],
             'sort_by' => ['nullable', Rule::in(['distance', 'rating'])],
         ];
     }

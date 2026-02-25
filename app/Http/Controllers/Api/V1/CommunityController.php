@@ -10,9 +10,6 @@ use App\Http\Requests\Api\V1\Community\StoreCommunityReportRequest;
 use App\Http\Requests\Api\V1\Community\StoreCommunityTopicRequest;
 use App\Http\Requests\Api\V1\Community\StoreCommunityVoteRequest;
 use App\Http\Requests\Api\V1\Community\UpdateCommunityTopicRequest;
-use App\Models\CommunityPost;
-use App\Models\CommunityReply;
-use App\Models\CommunityVote;
 use App\Services\CommunityService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -64,10 +61,10 @@ class CommunityController extends Controller
         $postData['user_voted'] = false;
 
         if (auth('sanctum')->check()) {
-            $postData['user_voted'] = CommunityVote::where('votable_type', CommunityPost::class)
-                ->where('votable_id', $post->id)
-                ->where('user_id', auth('sanctum')->id())
-                ->exists();
+            $postData['user_voted'] = $this->communityService->hasUserVotedOnPost(
+                $post->id,
+                auth('sanctum')->id()
+            );
         }
 
         return $this->success('Post retrieved successfully', ['post' => $postData]);
@@ -189,21 +186,18 @@ class CommunityController extends Controller
     {
         $validated = $request->validated();
 
-        if ($validated['votable_type'] === 'post') {
-            $votable = CommunityPost::where('uuid', $validated['votable_uuid'])->first();
-            $votableType = CommunityPost::class;
-        } else {
-            $votable = CommunityReply::where('uuid', $validated['votable_uuid'])->first();
-            $votableType = CommunityReply::class;
-        }
+        $resolved = $this->communityService->resolveVotable(
+            $validated['votable_type'],
+            $validated['votable_uuid']
+        );
 
-        if (!$votable) {
+        if (!$resolved) {
             return $this->notFound('Content not found');
         }
 
         $result = $this->communityService->toggleVote(
-            $votableType,
-            $votable->id,
+            $resolved['type'],
+            $resolved['model']->id,
             $request->user()->id
         );
 
@@ -216,21 +210,18 @@ class CommunityController extends Controller
     {
         $validated = $request->validated();
 
-        if ($validated['reportable_type'] === 'post') {
-            $reportable = CommunityPost::where('uuid', $validated['reportable_uuid'])->first();
-            $reportableType = CommunityPost::class;
-        } else {
-            $reportable = CommunityReply::where('uuid', $validated['reportable_uuid'])->first();
-            $reportableType = CommunityReply::class;
-        }
+        $resolved = $this->communityService->resolveReportable(
+            $validated['reportable_type'],
+            $validated['reportable_uuid']
+        );
 
-        if (!$reportable) {
+        if (!$resolved) {
             return $this->notFound('Content not found');
         }
 
         $report = $this->communityService->createReport(
-            $reportableType,
-            $reportable->id,
+            $resolved['type'],
+            $resolved['model']->id,
             $request->user()->id,
             $validated
         );
@@ -307,7 +298,7 @@ class CommunityController extends Controller
 
     public function adminDestroyPost(string $uuid): JsonResponse
     {
-        $post = CommunityPost::where('uuid', $uuid)->first();
+        $post = $this->communityService->findPostByUuid($uuid, false);
 
         if (!$post) {
             return $this->notFound('Post not found');
@@ -335,7 +326,7 @@ class CommunityController extends Controller
     {
         $perPage = min((int) ($request->per_page ?? 20), 100);
 
-        $reports = $this->communityService->getPendingReports($perPage);
+        $reports = $this->communityService->getReports($perPage, $request->query('status'));
 
         return $this->success('Reports retrieved successfully', [
             'reports'    => $reports->items(),

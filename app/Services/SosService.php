@@ -85,8 +85,29 @@ class SosService
         ];
     }
 
+    /**
+     * Valid SOS status transitions.
+     * Prevents backward transitions (e.g., completed → pending).
+     */
+    private const VALID_TRANSITIONS = [
+        'pending'      => ['acknowledged', 'cancelled'],
+        'acknowledged' => ['in_progress', 'cancelled'],
+        'in_progress'  => ['completed', 'cancelled'],
+        'completed'    => [],
+        'cancelled'    => [],
+    ];
+
     public function updateStatus(SosRequest $sosRequest, string $status, ?string $notes = null): SosRequest
     {
+        $current = $sosRequest->status;
+        $allowed = self::VALID_TRANSITIONS[$current] ?? [];
+
+        if (!in_array($status, $allowed, true)) {
+            throw new \DomainException(
+                "Cannot transition SOS from '{$current}' to '{$status}'. Allowed: " . (implode(', ', $allowed) ?: 'none')
+            );
+        }
+
         return DB::transaction(function () use ($sosRequest, $status, $notes) {
             $previousStatus = $sosRequest->status;
             $updateData = ['status' => $status];

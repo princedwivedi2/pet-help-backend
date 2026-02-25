@@ -9,6 +9,8 @@ use App\Models\CommunityTopic;
 use App\Models\CommunityVote;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class CommunityService
 {
@@ -143,30 +145,76 @@ class CommunityService
 
     // ─── Votes ──────────────────────────────────────────────────────
 
-    public function toggleVote(string $votableType, int $votableId, int $userId): array
+    /**
+     * Check if a user has voted on a specific post.
+     */
+    public function hasUserVotedOnPost(int $postId, int $userId): bool
     {
-        $existing = CommunityVote::where('votable_type', $votableType)
-            ->where('votable_id', $votableId)
+        return CommunityVote::where('votable_type', CommunityPost::class)
+            ->where('votable_id', $postId)
             ->where('user_id', $userId)
-            ->first();
+            ->exists();
+    }
 
-        if ($existing) {
-            $existing->delete();
-            $count = CommunityVote::where('votable_type', $votableType)
-                ->where('votable_id', $votableId)->count();
-            return ['voted' => false, 'votes_count' => $count];
+    /**
+     * Resolve a votable entity by type string and UUID.
+     *
+     * @return array{model: \Illuminate\Database\Eloquent\Model, type: string}|null
+     */
+    public function resolveVotable(string $type, string $uuid): ?array
+    {
+        if ($type === 'post') {
+            $model = CommunityPost::where('uuid', $uuid)->first();
+            return $model ? ['model' => $model, 'type' => CommunityPost::class] : null;
         }
 
-        CommunityVote::create([
-            'votable_type' => $votableType,
-            'votable_id'   => $votableId,
-            'user_id'      => $userId,
-        ]);
+        $model = CommunityReply::where('uuid', $uuid)->first();
+        return $model ? ['model' => $model, 'type' => CommunityReply::class] : null;
+    }
 
-        $count = CommunityVote::where('votable_type', $votableType)
-            ->where('votable_id', $votableId)->count();
+    /**
+     * Resolve a reportable entity by type string and UUID.
+     *
+     * @return array{model: \Illuminate\Database\Eloquent\Model, type: string}|null
+     */
+    public function resolveReportable(string $type, string $uuid): ?array
+    {
+        if ($type === 'post') {
+            $model = CommunityPost::where('uuid', $uuid)->first();
+            return $model ? ['model' => $model, 'type' => CommunityPost::class] : null;
+        }
 
-        return ['voted' => true, 'votes_count' => $count];
+        $model = CommunityReply::where('uuid', $uuid)->first();
+        return $model ? ['model' => $model, 'type' => CommunityReply::class] : null;
+    }
+
+    public function toggleVote(string $votableType, int $votableId, int $userId): array
+    {
+        return DB::transaction(function () use ($votableType, $votableId, $userId) {
+            $existing = CommunityVote::where('votable_type', $votableType)
+                ->where('votable_id', $votableId)
+                ->where('user_id', $userId)
+                ->lockForUpdate()
+                ->first();
+
+            if ($existing) {
+                $existing->delete();
+                $count = CommunityVote::where('votable_type', $votableType)
+                    ->where('votable_id', $votableId)->count();
+                return ['voted' => false, 'votes_count' => $count];
+            }
+
+            CommunityVote::create([
+                'votable_type' => $votableType,
+                'votable_id'   => $votableId,
+                'user_id'      => $userId,
+            ]);
+
+            $count = CommunityVote::where('votable_type', $votableType)
+                ->where('votable_id', $votableId)->count();
+
+            return ['voted' => true, 'votes_count' => $count];
+        });
     }
 
     // ─── Reports ────────────────────────────────────────────────────
@@ -185,6 +233,20 @@ class CommunityService
         ]);
 
         return $report->load('user:id,name');
+    }
+
+    public function getReports(int $perPage = 20, ?string $status = null): LengthAwarePaginator
+    {
+        $query = CommunityReport::with(['user:id,name', 'reportable'])
+            ->orderByDesc('created_at');
+
+        if ($status) {
+            $query->where('status', $status);
+        } else {
+            $query->pending();
+        }
+
+        return $query->paginate($perPage);
     }
 
     public function getPendingReports(int $perPage = 20): LengthAwarePaginator
@@ -207,6 +269,12 @@ class CommunityService
             'admin_notes' => $data['admin_notes'] ?? null,
             'reviewed_by' => $adminId,
             'reviewed_at' => now(),
+        ]);
+
+        Log::info('Community report reviewed', [
+            'report_uuid' => $report->uuid,
+            'admin_id'    => $adminId,
+            'status'      => $data['status'],
         ]);
 
         return $report->fresh(['user:id,name', 'reviewer:id,name', 'reportable']);

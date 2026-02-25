@@ -1,0 +1,1630 @@
+{
+    "info": {
+        "name": "PetSathi API v1 - Complete QA Test Collection",
+        "description": "Comprehensive QA test collection for PetSathi/RESPAW Backend API.\nCovers all 73 endpoints across 8 modules: Auth, Pets, SOS, Incidents, Vets, Guides, Blog, Community.\n\nTest Flow:\n1. Register & Login to get token\n2. Set {{auth_token}} variable\n3. Run tests sequentially per folder\n\nEnvironment Variables Required:\n- base_url: http://localhost:8000/api/v1\n- auth_token: (auto-set after login)\n- admin_token: (auto-set after admin login)",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+        "_exporter_id": "petsathi-qa"
+    },
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://localhost:8000/api/v1",
+            "type": "string"
+        },
+        {
+            "key": "auth_token",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "admin_token",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "user_id",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "pet_id",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "sos_uuid",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "incident_uuid",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "vet_uuid",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "blog_category_uuid",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "blog_post_uuid",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "blog_tag_id",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "blog_comment_uuid",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "community_topic_uuid",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "community_post_uuid",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "community_reply_uuid",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "community_report_uuid",
+            "value": "",
+            "type": "string"
+        }
+    ],
+    "item": [
+        {
+            "name": "01. Auth Module",
+            "description": "Authentication endpoints: Register, Login, Me, Logout",
+            "item": [
+                {
+                    "name": "Register - Success",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 201 Created', () => pm.response.to.have.status(201));",
+                                    "pm.test('Has token', () => {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json.success).to.be.true;",
+                                    "    pm.expect(json.data.token).to.be.a('string');",
+                                    "    pm.expect(json.data.user.email).to.eql('testuser@petsathi.com');",
+                                    "    pm.collectionVariables.set('auth_token', json.data.token);",
+                                    "    pm.collectionVariables.set('user_id', json.data.user.id);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Content-Type", "value": "application/json" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Test User\",\n    \"email\": \"testuser@petsathi.com\",\n    \"password\": \"Password1\",\n    \"password_confirmation\": \"Password1\"\n}"
+                        },
+                        "url": "{{base_url}}/auth/register"
+                    }
+                },
+                {
+                    "name": "Register - Duplicate Email (422)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                                    "pm.test('Has validation errors', () => {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json.success).to.be.false;",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Content-Type", "value": "application/json" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Dup User\",\n    \"email\": \"testuser@petsathi.com\",\n    \"password\": \"Password1\",\n    \"password_confirmation\": \"Password1\"\n}"
+                        },
+                        "url": "{{base_url}}/auth/register"
+                    }
+                },
+                {
+                    "name": "Register - Weak Password (422)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 422', () => pm.response.to.have.status(422));"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Content-Type", "value": "application/json" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Weak\",\n    \"email\": \"weak@test.com\",\n    \"password\": \"short\",\n    \"password_confirmation\": \"short\"\n}"
+                        },
+                        "url": "{{base_url}}/auth/register"
+                    }
+                },
+                {
+                    "name": "Register - Missing Fields (422)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 422', () => pm.response.to.have.status(422));"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Content-Type", "value": "application/json" }
+                        ],
+                        "body": { "mode": "raw", "raw": "{}" },
+                        "url": "{{base_url}}/auth/register"
+                    }
+                },
+                {
+                    "name": "Login - Success",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                                    "pm.test('Has token', () => {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json.success).to.be.true;",
+                                    "    pm.expect(json.data.token).to.be.a('string');",
+                                    "    pm.collectionVariables.set('auth_token', json.data.token);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Content-Type", "value": "application/json" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"email\": \"testuser@petsathi.com\",\n    \"password\": \"Password1\"\n}"
+                        },
+                        "url": "{{base_url}}/auth/login"
+                    }
+                },
+                {
+                    "name": "Login - Wrong Password (401)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 401', () => pm.response.to.have.status(401));",
+                                    "pm.test('Success false', () => pm.expect(pm.response.json().success).to.be.false);"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Content-Type", "value": "application/json" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"email\": \"testuser@petsathi.com\",\n    \"password\": \"WrongPass1\"\n}"
+                        },
+                        "url": "{{base_url}}/auth/login"
+                    }
+                },
+                {
+                    "name": "Me - Authenticated",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                                    "pm.test('Has user data', () => {",
+                                    "    pm.expect(pm.response.json().data.user).to.have.property('id');",
+                                    "    pm.expect(pm.response.json().data.user).to.have.property('email');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+                        ],
+                        "url": "{{base_url}}/auth/me"
+                    }
+                },
+                {
+                    "name": "Me - Unauthenticated (401)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 401', () => pm.response.to.have.status(401));"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" }
+                        ],
+                        "url": "{{base_url}}/auth/me"
+                    }
+                },
+                {
+                    "name": "Logout",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+                        ],
+                        "url": "{{base_url}}/auth/logout"
+                    }
+                },
+                {
+                    "name": "Re-Login (restore token)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                                    "const json = pm.response.json();",
+                                    "pm.collectionVariables.set('auth_token', json.data.token);"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Content-Type", "value": "application/json" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"email\": \"testuser@petsathi.com\",\n    \"password\": \"Password1\"\n}"
+                        },
+                        "url": "{{base_url}}/auth/login"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "02. Pets Module",
+            "description": "CRUD operations for user's pets",
+            "item": [
+                {
+                    "name": "Create Pet",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                                    "pm.test('Pet created', () => {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json.data.pet.name).to.eql('Buddy');",
+                                    "    pm.collectionVariables.set('pet_id', json.data.pet.id);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Content-Type", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Buddy\",\n    \"species\": \"dog\",\n    \"breed\": \"Labrador\",\n    \"weight_kg\": 25.5,\n    \"birth_date\": \"2022-03-15\"\n}"
+                        },
+                        "url": "{{base_url}}/pets"
+                    }
+                },
+                {
+                    "name": "List My Pets",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                                    "pm.test('Has pets array', () => {",
+                                    "    pm.expect(pm.response.json().data.pets).to.be.an('array');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+                        ],
+                        "url": "{{base_url}}/pets"
+                    }
+                },
+                {
+                    "name": "Show Pet",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                                    "pm.test('Has pet data', () => {",
+                                    "    pm.expect(pm.response.json().data.pet).to.have.property('name');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+                        ],
+                        "url": "{{base_url}}/pets/{{pet_id}}"
+                    }
+                },
+                {
+                    "name": "Update Pet",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                                    "pm.test('Name updated', () => {",
+                                    "    pm.expect(pm.response.json().data.pet.name).to.eql('Buddy Updated');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Content-Type", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Buddy Updated\",\n    \"weight_kg\": 27.0\n}"
+                        },
+                        "url": "{{base_url}}/pets/{{pet_id}}"
+                    }
+                },
+                {
+                    "name": "Create Pet - Invalid Species (422)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 422', () => pm.response.to.have.status(422));"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Content-Type", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Alien\",\n    \"species\": \"dinosaur\"\n}"
+                        },
+                        "url": "{{base_url}}/pets"
+                    }
+                },
+                {
+                    "name": "Delete Pet",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+                        ],
+                        "url": "{{base_url}}/pets/{{pet_id}}"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "03. SOS Module",
+            "description": "Emergency SOS request management",
+            "item": [
+                {
+                    "name": "Create Pet (for SOS)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const json = pm.response.json();",
+                                    "pm.collectionVariables.set('pet_id', json.data.pet.id);"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Content-Type", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"SOS Pet\",\n    \"species\": \"dog\"\n}"
+                        },
+                        "url": "{{base_url}}/pets"
+                    }
+                },
+                {
+                    "name": "Create SOS",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                                    "pm.test('SOS created', () => {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json.data.sos).to.have.property('uuid');",
+                                    "    pm.collectionVariables.set('sos_uuid', json.data.sos.uuid);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Content-Type", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"pet_id\": {{pet_id}},\n    \"latitude\": 19.076090,\n    \"longitude\": 72.877426,\n    \"address\": \"123 Emergency Lane, Mumbai\",\n    \"description\": \"My dog is having trouble breathing, needs immediate vet attention please help urgently.\",\n    \"emergency_type\": \"breathing\"\n}"
+                        },
+                        "url": "{{base_url}}/sos"
+                    }
+                },
+                {
+                    "name": "Get Active SOS",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+                        ],
+                        "url": "{{base_url}}/sos/active"
+                    }
+                },
+                {
+                    "name": "Update SOS Status - Complete",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Content-Type", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"status\": \"completed\",\n    \"resolution_notes\": \"Pet was treated at nearby vet clinic.\"\n}"
+                        },
+                        "url": "{{base_url}}/sos/{{sos_uuid}}/status"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "04. Incidents Module",
+            "description": "Incident log viewing",
+            "item": [
+                {
+                    "name": "List My Incidents",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                                    "pm.test('Has incidents', () => {",
+                                    "    const json = pm.response.json();",
+                                    "    if (json.data.incidents.length > 0) {",
+                                    "        pm.collectionVariables.set('incident_uuid', json.data.incidents[0].uuid);",
+                                    "    }",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+                        ],
+                        "url": "{{base_url}}/incidents"
+                    }
+                },
+                {
+                    "name": "Show Incident",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200 or 404', () => {",
+                                    "    pm.expect([200, 404]).to.include(pm.response.code);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+                        ],
+                        "url": "{{base_url}}/incidents/{{incident_uuid}}"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "05. Guides Module",
+            "description": "Emergency guides and categories (public)",
+            "item": [
+                {
+                    "name": "List Emergency Categories",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                                    "pm.test('Has categories', () => {",
+                                    "    pm.expect(pm.response.json().data.categories).to.be.an('array');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [{ "key": "Accept", "value": "application/json" }],
+                        "url": "{{base_url}}/emergency-categories"
+                    }
+                },
+                {
+                    "name": "List Guides",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [{ "key": "Accept", "value": "application/json" }],
+                        "url": "{{base_url}}/guides"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "06. Vets Module",
+            "description": "Vet registration, search, and profile",
+            "item": [
+                {
+                    "name": "Register Vet",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                                    "pm.test('Vet registered', () => {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json.data.user.role).to.eql('vet');",
+                                    "    pm.collectionVariables.set('vet_uuid', json.data.vet_profile.uuid);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Content-Type", "value": "application/json" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"full_name\": \"Dr. Sarah Johnson\",\n    \"email\": \"dr.sarah@vetclinic.com\",\n    \"password\": \"SecurePass1\",\n    \"password_confirmation\": \"SecurePass1\",\n    \"phone_number\": \"+919876543210\",\n    \"clinic_name\": \"Happy Paws Clinic\",\n    \"clinic_address\": \"123 Vet Lane, Mumbai, Maharashtra, 400001\",\n    \"latitude\": 19.076090,\n    \"longitude\": 72.877426,\n    \"qualifications\": \"BVSc, MVSc Veterinary Surgery\",\n    \"license_number\": \"VET-MH-2024-001\",\n    \"years_of_experience\": 8,\n    \"accepted_species\": [\"dog\", \"cat\", \"bird\"],\n    \"services_offered\": [\"consultation\", \"vaccination\", \"surgery\"]\n}"
+                        },
+                        "url": "{{base_url}}/vet/register"
+                    }
+                },
+                {
+                    "name": "Search Vets (Public)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                                    "pm.test('Has search params', () => {",
+                                    "    pm.expect(pm.response.json().data.search_params).to.have.property('latitude');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [{ "key": "Accept", "value": "application/json" }],
+                        "url": {
+                            "raw": "{{base_url}}/vets?lat=19.076&lng=72.877&radius_km=10",
+                            "host": ["{{base_url}}"],
+                            "path": ["vets"],
+                            "query": [
+                                { "key": "lat", "value": "19.076" },
+                                { "key": "lng", "value": "72.877" },
+                                { "key": "radius_km", "value": "10" }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Search Vets - Missing Coords (422)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 422', () => pm.response.to.have.status(422));"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [{ "key": "Accept", "value": "application/json" }],
+                        "url": "{{base_url}}/vets"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "07. Blog Module",
+            "description": "Blog categories, posts, comments, likes, tags (admin + public + auth)",
+            "item": [
+                {
+                    "name": "Public: List Categories",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                                    "pm.test('Has categories', () => pm.expect(pm.response.json().data.categories).to.be.an('array'));"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [{ "key": "Accept", "value": "application/json" }],
+                        "url": "{{base_url}}/blog/categories"
+                    }
+                },
+                {
+                    "name": "Public: List Posts",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                                    "pm.test('Has pagination', () => {",
+                                    "    pm.expect(pm.response.json().data).to.have.property('pagination');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [{ "key": "Accept", "value": "application/json" }],
+                        "url": "{{base_url}}/blog/posts"
+                    }
+                },
+                {
+                    "name": "Public: List Tags",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [{ "key": "Accept", "value": "application/json" }],
+                        "url": "{{base_url}}/blog/tags"
+                    }
+                },
+                {
+                    "name": "Admin: Login as Admin",
+                    "event": [
+                        {
+                            "listen": "prerequest",
+                            "script": {
+                                "exec": [
+                                    "// Pre-req: Create admin user via seeder or manually first"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        },
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "if (pm.response.code === 200) {",
+                                    "    pm.collectionVariables.set('admin_token', pm.response.json().data.token);",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Content-Type", "value": "application/json" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"email\": \"admin@petsathi.com\",\n    \"password\": \"AdminPass1\"\n}"
+                        },
+                        "url": "{{base_url}}/auth/login"
+                    }
+                },
+                {
+                    "name": "Admin: Create Blog Category",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                                    "pm.test('Category created', () => {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.collectionVariables.set('blog_category_uuid', json.data.category.uuid);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Content-Type", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Pet Health\",\n    \"description\": \"Articles about pet health and wellness\"\n}"
+                        },
+                        "url": "{{base_url}}/admin/blog/categories"
+                    }
+                },
+                {
+                    "name": "Admin: Create Blog Post",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                                    "pm.test('Post created', () => {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.collectionVariables.set('blog_post_uuid', json.data.post.uuid);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Content-Type", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"title\": \"10 Tips for Dog Health\",\n    \"content\": \"Dogs are wonderful companions. Here are 10 essential tips to keep your dog healthy and happy throughout their life. Proper nutrition, regular exercise, and routine vet visits are key.\",\n    \"excerpt\": \"Essential tips for keeping your dog healthy\",\n    \"status\": \"published\",\n    \"tags\": [\"dog-health\", \"pet-care\", \"wellness\"]\n}"
+                        },
+                        "url": "{{base_url}}/admin/blog/posts"
+                    }
+                },
+                {
+                    "name": "Admin: Toggle Publish",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+                        ],
+                        "url": "{{base_url}}/admin/blog/posts/{{blog_post_uuid}}/toggle-publish"
+                    }
+                },
+                {
+                    "name": "Admin: Create Tag",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 201', () => pm.response.to.have.status(201));"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Content-Type", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"nutrition\"\n}"
+                        },
+                        "url": "{{base_url}}/admin/blog/tags"
+                    }
+                },
+                {
+                    "name": "Public: Show Blog Post",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200 or 404', () => {",
+                                    "    pm.expect([200, 404]).to.include(pm.response.code);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [{ "key": "Accept", "value": "application/json" }],
+                        "url": "{{base_url}}/blog/posts/{{blog_post_uuid}}"
+                    }
+                },
+                {
+                    "name": "Auth: Comment on Blog Post",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "if (pm.response.code === 201) {",
+                                    "    pm.collectionVariables.set('blog_comment_uuid', pm.response.json().data.comment.uuid);",
+                                    "}",
+                                    "pm.test('Status 201 or 404', () => pm.expect([201, 404]).to.include(pm.response.code));"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Content-Type", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"content\": \"Great article! Very helpful for pet owners.\"\n}"
+                        },
+                        "url": "{{base_url}}/blog/posts/{{blog_post_uuid}}/comments"
+                    }
+                },
+                {
+                    "name": "Auth: Like Blog Post",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200 or 404', () => pm.expect([200, 404]).to.include(pm.response.code));"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+                        ],
+                        "url": "{{base_url}}/blog/posts/{{blog_post_uuid}}/like"
+                    }
+                },
+                {
+                    "name": "Admin: Approve Comment",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200 or 404', () => pm.expect([200, 404]).to.include(pm.response.code));"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+                        ],
+                        "url": "{{base_url}}/admin/blog/comments/{{blog_comment_uuid}}/approve"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "08. Community Module",
+            "description": "Community forum: topics, posts, replies, votes, reports",
+            "item": [
+                {
+                    "name": "Public: List Topics",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [{ "key": "Accept", "value": "application/json" }],
+                        "url": "{{base_url}}/community/topics"
+                    }
+                },
+                {
+                    "name": "Admin: Create Topic",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                                    "pm.test('Topic created', () => {",
+                                    "    pm.collectionVariables.set('community_topic_uuid', pm.response.json().data.topic.uuid);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Content-Type", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Pet Health Discussion\",\n    \"description\": \"Discuss all things related to pet health\",\n    \"icon\": \"🏥\"\n}"
+                        },
+                        "url": "{{base_url}}/admin/community/topics"
+                    }
+                },
+                {
+                    "name": "Auth: Create Community Post",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                                    "pm.test('Post created', () => {",
+                                    "    pm.collectionVariables.set('community_post_uuid', pm.response.json().data.post.uuid);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Content-Type", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"topic_uuid\": \"{{community_topic_uuid}}\",\n    \"title\": \"My dog has been acting strange\",\n    \"content\": \"For the past few days, my dog has been lethargic and not eating well. Has anyone experienced this?\"\n}"
+                        },
+                        "url": "{{base_url}}/community/posts"
+                    }
+                },
+                {
+                    "name": "Public: List Posts",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [{ "key": "Accept", "value": "application/json" }],
+                        "url": "{{base_url}}/community/posts"
+                    }
+                },
+                {
+                    "name": "Public: Show Post",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [{ "key": "Accept", "value": "application/json" }],
+                        "url": "{{base_url}}/community/posts/{{community_post_uuid}}"
+                    }
+                },
+                {
+                    "name": "Auth: Create Reply",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                                    "pm.test('Reply created', () => {",
+                                    "    pm.collectionVariables.set('community_reply_uuid', pm.response.json().data.reply.uuid);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Content-Type", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"content\": \"You should take your dog to a vet immediately. This could be a sign of something serious.\"\n}"
+                        },
+                        "url": "{{base_url}}/community/posts/{{community_post_uuid}}/replies"
+                    }
+                },
+                {
+                    "name": "Public: Get Post Replies",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [{ "key": "Accept", "value": "application/json" }],
+                        "url": "{{base_url}}/community/posts/{{community_post_uuid}}/replies"
+                    }
+                },
+                {
+                    "name": "Auth: Vote on Post",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                                    "pm.test('Vote toggled', () => {",
+                                    "    pm.expect(pm.response.json().data).to.have.property('voted');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Content-Type", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"votable_type\": \"post\",\n    \"votable_uuid\": \"{{community_post_uuid}}\"\n}"
+                        },
+                        "url": "{{base_url}}/community/votes"
+                    }
+                },
+                {
+                    "name": "Auth: Report Post",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                                    "if (pm.response.code === 201) {",
+                                    "    pm.collectionVariables.set('community_report_uuid', pm.response.json().data.report.uuid);",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Content-Type", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"reportable_type\": \"post\",\n    \"reportable_uuid\": \"{{community_post_uuid}}\",\n    \"reason\": \"This post contains misleading medical advice that could harm pets.\"\n}"
+                        },
+                        "url": "{{base_url}}/community/reports"
+                    }
+                },
+                {
+                    "name": "Admin: List Reports",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+                        ],
+                        "url": "{{base_url}}/admin/community/reports"
+                    }
+                },
+                {
+                    "name": "Admin: Review Report",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200 or 404', () => pm.expect([200, 404]).to.include(pm.response.code));"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Content-Type", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"status\": \"reviewed\",\n    \"admin_notes\": \"Content reviewed. Warning issued to the user.\"\n}"
+                        },
+                        "url": "{{base_url}}/admin/community/reports/{{community_report_uuid}}"
+                    }
+                },
+                {
+                    "name": "Admin: Toggle Lock Post",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+                        ],
+                        "url": "{{base_url}}/admin/community/posts/{{community_post_uuid}}/lock"
+                    }
+                },
+                {
+                    "name": "Admin: Toggle Visibility",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+                        ],
+                        "url": "{{base_url}}/admin/community/posts/{{community_post_uuid}}/toggle-visibility"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "09. Admin Module",
+            "description": "Admin dashboard: stats, users, SOS, incidents, vet verification",
+            "item": [
+                {
+                    "name": "Admin: Dashboard Stats",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                                    "pm.test('Has stats', () => {",
+                                    "    const stats = pm.response.json().data.stats;",
+                                    "    pm.expect(stats).to.have.property('total_users');",
+                                    "    pm.expect(stats).to.have.property('total_pets');",
+                                    "    pm.expect(stats).to.have.property('active_sos');",
+                                    "    pm.expect(stats).to.have.property('total_blog_posts');",
+                                    "    pm.expect(stats).to.have.property('pending_reports');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+                        ],
+                        "url": "{{base_url}}/admin/stats"
+                    }
+                },
+                {
+                    "name": "Admin: List Users",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                                    "pm.test('Has pagination', () => {",
+                                    "    pm.expect(pm.response.json().data).to.have.property('pagination');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+                        ],
+                        "url": "{{base_url}}/admin/users"
+                    }
+                },
+                {
+                    "name": "Admin: List Users (filter by role)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/admin/users?role=vet",
+                            "host": ["{{base_url}}"],
+                            "path": ["admin", "users"],
+                            "query": [{ "key": "role", "value": "vet" }]
+                        }
+                    }
+                },
+                {
+                    "name": "Admin: List SOS Requests",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+                        ],
+                        "url": "{{base_url}}/admin/sos"
+                    }
+                },
+                {
+                    "name": "Admin: List Incidents",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+                        ],
+                        "url": "{{base_url}}/admin/incidents"
+                    }
+                },
+                {
+                    "name": "Admin: Stats Forbidden For User (403)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 403', () => pm.response.to.have.status(403));"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            { "key": "Accept", "value": "application/json" },
+                            { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+                        ],
+                        "url": "{{base_url}}/admin/stats"
+                    }
+                }
+            ]
+        }
+    ]
+}

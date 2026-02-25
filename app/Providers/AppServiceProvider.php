@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Models\Appointment;
 use App\Models\BlogComment;
 use App\Models\BlogPost;
 use App\Models\CommunityPost;
@@ -10,6 +11,7 @@ use App\Models\IncidentLog;
 use App\Models\Pet;
 use App\Models\SosRequest;
 use App\Models\VetProfile;
+use App\Policies\AppointmentPolicy;
 use App\Policies\BlogCommentPolicy;
 use App\Policies\BlogPostPolicy;
 use App\Policies\CommunityPostPolicy;
@@ -29,7 +31,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->bind(
+            \App\Contracts\AdminMetrics::class,
+            \App\Services\AdminMetricsService::class
+        );
     }
 
     /**
@@ -43,6 +48,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(SosRequest::class, SosPolicy::class);
         Gate::policy(IncidentLog::class, IncidentPolicy::class);
         Gate::policy(VetProfile::class, VetProfilePolicy::class);
+        Gate::policy(Appointment::class, AppointmentPolicy::class);
         Gate::policy(BlogPost::class, BlogPostPolicy::class);
         Gate::policy(BlogComment::class, BlogCommentPolicy::class);
         Gate::policy(CommunityPost::class, CommunityPostPolicy::class);
