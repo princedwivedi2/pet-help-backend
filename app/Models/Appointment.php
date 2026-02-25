@@ -13,7 +13,6 @@ class Appointment extends Model
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
-        'uuid',
         'user_id',
         'vet_profile_id',
         'pet_id',

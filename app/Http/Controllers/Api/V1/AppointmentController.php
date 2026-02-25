@@ -53,11 +53,6 @@ class AppointmentController extends Controller
     public function vetIndex(Request $request): JsonResponse
     {
         $user = $request->user();
-
-        if (!$user->isVet()) {
-            return $this->forbidden('Only veterinarians can access this resource.');
-        }
-
         $vetProfile = VetProfile::where('user_id', $user->id)->first();
 
         if (!$vetProfile) {
@@ -202,12 +197,6 @@ class AppointmentController extends Controller
     private function markNoShow(Request $request, Appointment $appointment): Appointment
     {
         $this->authorize('complete', $appointment);
-
-        if ($appointment->status !== 'confirmed') {
-            throw new \DomainException('Only confirmed appointments can be marked as no-show.');
-        }
-
-        $appointment->update(['status' => 'no_show']);
-        return $appointment->fresh(['user:id,name', 'vetProfile:id,uuid,clinic_name,vet_name', 'pet:id,name,species']);
+        return $this->appointmentService->markNoShow($appointment);
     }
 }

@@ -71,29 +71,24 @@ Route::prefix('community')->group(function () {
 
 // ─── Authenticated (verified email required) ────────────────────────
 Route::middleware(['auth:sanctum', 'verified'])->group(function () {
-    // Pets
+    // Pets (user-scoped via controller/policy)
     Route::apiResource('pets', PetController::class);
 
-    // SOS
+    // SOS — users create; users + vets update status
     Route::prefix('sos')->group(function () {
         Route::post('/', [SosController::class, 'store']);
         Route::get('/active', [SosController::class, 'active']);
         Route::put('/{uuid}/status', [SosController::class, 'updateStatus']);
     });
 
-    // Incidents
+    // Incidents (user-scoped via controller)
     Route::get('incidents', [IncidentController::class, 'index']);
     Route::get('incidents/{uuid}', [IncidentController::class, 'show']);
 
-    // Vet Profile
-    Route::get('vet/profile', [VetOnboardingController::class, 'profile']);
-    Route::post('vet/documents', [VetOnboardingController::class, 'uploadDocument']);
-
-    // Appointments
+    // Appointments — shared routes (users book, vets manage)
     Route::prefix('appointments')->group(function () {
         Route::get('/', [AppointmentController::class, 'index']);
         Route::post('/', [AppointmentController::class, 'store']);
-        Route::get('/vet', [AppointmentController::class, 'vetIndex']);
         Route::get('/slots/{vet_uuid}', [AppointmentController::class, 'availableSlots']);
         Route::get('/{uuid}', [AppointmentController::class, 'show']);
         Route::put('/{uuid}/status', [AppointmentController::class, 'updateStatus']);
@@ -130,6 +125,13 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
     });
 });
 
+// ─── Vet-only routes (require vet role) ─────────────────────────────
+Route::middleware(['auth:sanctum', 'verified', 'role:vet'])->group(function () {
+    Route::get('vet/profile', [VetOnboardingController::class, 'profile']);
+    Route::post('vet/documents', [VetOnboardingController::class, 'uploadDocument']);
+    Route::get('appointments/vet', [AppointmentController::class, 'vetIndex']);
+});
+
 // ─── Admin ──────────────────────────────────────────────────────────
 Route::middleware(['auth:sanctum', 'verified', 'role:admin'])->prefix('admin')->group(function () {
     // Dashboard
@@ -149,6 +151,7 @@ Route::middleware(['auth:sanctum', 'verified', 'role:admin'])->prefix('admin')->
     Route::get('vets', [AdminController::class, 'vetsByStatus']);
     Route::get('vets/unverified', [AdminController::class, 'unverifiedVets']);
     Route::get('vets/{uuid}', [AdminController::class, 'showVet']);
+    Route::get('vets/{uuid}/review', [AdminController::class, 'reviewVet']);
     Route::put('vets/{uuid}/approve', [AdminController::class, 'approveVet']);
     Route::put('vets/{uuid}/reject', [AdminController::class, 'rejectVet']);
     Route::put('vets/{uuid}/verify', [AdminController::class, 'verifyVet']);

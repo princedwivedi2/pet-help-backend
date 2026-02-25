@@ -16,15 +16,18 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         // Create admin user
-        User::firstOrCreate(
+        $admin = User::firstOrCreate(
             ['email' => 'admin@petsathi.com'],
             [
                 'name' => 'Admin',
                 'password' => bcrypt('admin123'),
-                'role' => 'admin',
                 'email_verified_at' => now(),
             ]
         );
+        if ($admin->wasRecentlyCreated) {
+            $admin->role = 'admin';
+            $admin->save();
+        }
 
         // Create test vet user
         $vetUser = User::firstOrCreate(
@@ -32,21 +35,27 @@ class DatabaseSeeder extends Seeder
             [
                 'name' => 'Dr. Sarah Johnson',
                 'password' => bcrypt('vet123'),
-                'role' => 'vet',
                 'email_verified_at' => now(),
             ]
         );
+        if ($vetUser->wasRecentlyCreated) {
+            $vetUser->role = 'vet';
+            $vetUser->save();
+        }
 
         // Create test user
-        User::firstOrCreate(
+        $testUser = User::firstOrCreate(
             ['email' => 'test@example.com'],
             [
                 'name' => 'Test User',
                 'password' => bcrypt('password'),
-                'role' => 'user',
                 'email_verified_at' => now(),
             ]
         );
+        if ($testUser->wasRecentlyCreated) {
+            $testUser->role = 'user';
+            $testUser->save();
+        }
 
         // Run seeders
         $this->call([

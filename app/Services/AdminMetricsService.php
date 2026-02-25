@@ -165,7 +165,7 @@ class AdminMetricsService implements AdminMetrics
         });
 
         // Recent community reports
-        CommunityPost::latest()->take($limit)->get()->each(function ($report) use (&$activities) {
+        CommunityPost::with('user:id,name')->latest()->take($limit)->get()->each(function ($report) use (&$activities) {
             $activities->push([
                 'action' => 'Community post created',
                 'actor'  => $report->user->name ?? 'Unknown',

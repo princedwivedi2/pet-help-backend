@@ -14,7 +14,6 @@ class VetProfile extends Model
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
-        'uuid',
         'user_id',
         'clinic_name',
         'vet_name',
@@ -40,8 +39,6 @@ class VetProfile extends Model
         'verified_at',
         'verified_by',
         'is_active',
-        'rating',
-        'review_count',
     ];
 
     protected function casts(): array
@@ -84,6 +81,11 @@ class VetProfile extends Model
     public function verificationLogs(): HasMany
     {
         return $this->hasMany(VetVerificationLog::class);
+    }
+
+    public function verifications(): HasMany
+    {
+        return $this->hasMany(VetVerification::class);
     }
 
     public function availabilities(): HasMany
@@ -147,6 +149,11 @@ class VetProfile extends Model
     public function isSuspended(): bool
     {
         return $this->vet_status === 'suspended';
+    }
+
+    public function isRejected(): bool
+    {
+        return $this->vet_status === 'rejected';
     }
 
     public function getRouteKeyName(): string

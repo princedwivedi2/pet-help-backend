@@ -37,7 +37,6 @@ class VetOnboardingController extends Controller
         return $this->created('Vet application submitted successfully. Your profile is under review.', [
             'user'        => $result['user'],
             'vet_profile' => $result['vet_profile'],
-            'token'       => $result['token'],
             'documents'   => $result['documents'],
         ]);
     }
@@ -57,7 +56,6 @@ class VetOnboardingController extends Controller
         return $this->created('Vet registered successfully. Your profile is pending verification.', [
             'user'        => $result['user'],
             'vet_profile' => $result['vet_profile'],
-            'token'       => $result['token'],
         ]);
     }
 
@@ -69,10 +67,6 @@ class VetOnboardingController extends Controller
     public function profile(Request $request): JsonResponse
     {
         $user = $request->user();
-
-        if (!$user->isVet()) {
-            return $this->forbidden('Only veterinarians can access this resource.');
-        }
 
         $vetProfile = VetProfile::where('user_id', $user->id)
             ->with('availabilities')
@@ -100,10 +94,6 @@ class VetOnboardingController extends Controller
         ]);
 
         $user = $request->user();
-
-        if (!$user->isVet()) {
-            return $this->forbidden('Only veterinarians can upload documents.');
-        }
 
         $vetProfile = VetProfile::where('user_id', $user->id)->first();
 

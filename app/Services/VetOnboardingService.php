@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Exceptions\VetApprovalException;
+use App\Exceptions\VetDocumentException;
 use App\Models\User;
 use App\Models\VetProfile;
 use App\Models\VetVerificationLog;
@@ -14,6 +16,9 @@ use Illuminate\Support\Str;
 
 class VetOnboardingService
 {
+    public function __construct(
+        private VetVerificationService $verificationService
+    ) {}
     /**
      * Process a vet application.
      *
@@ -33,9 +38,12 @@ class VetOnboardingService
                 'name'     => $data['full_name'],
                 'email'    => $data['email'],
                 'password' => $data['password'], // hashed via model cast
-                'role'     => 'vet',
                 'phone'    => $data['phone_number'] ?? null,
             ]);
+
+            // Set role explicitly — not mass-assignable for security
+            $user->role = 'vet';
+            $user->save();
 
             // Store documents with UUID filenames
             $documentPaths = $this->storeDocuments($files);
@@ -80,7 +88,8 @@ class VetOnboardingService
                 ],
             ]);
 
-            $token = $user->createToken('vet-app')->plainTextToken;
+            // Do NOT issue a token — pending vets must wait for admin approval
+            // before they can log in (login guard checks vet_status=approved)
 
             Log::channel('stack')->info('Vet application submitted', [
                 'user_id'        => $user->id,
@@ -92,7 +101,6 @@ class VetOnboardingService
             return [
                 'user'        => $user,
                 'vet_profile' => $vetProfile,
-                'token'       => $token,
                 'documents'   => $documentPaths,
             ];
         });
@@ -182,10 +190,50 @@ class VetOnboardingService
 
     /**
      * Approve a vet profile.
+     *
+     * Runs eligibility checks (profile completeness, document verification,
+     * status guards) before allowing approval. Creates a persistent
+     * VetVerification record with a JSON snapshot of the vet data.
+     *
+     * @throws \DomainException If vet is not in 'pending' status
+     * @throws VetApprovalException If profile is incomplete
+     * @throws VetDocumentException If documents are missing
      */
-    public function approveVet(VetProfile $vetProfile, User $admin): VetProfile
+    public function approveVet(VetProfile $vetProfile, User $admin, ?string $notes = null): VetProfile
     {
-        return DB::transaction(function () use ($vetProfile, $admin) {
+        return DB::transaction(function () use ($vetProfile, $admin, $notes) {
+            // Lock the row to prevent race conditions
+            $vetProfile = VetProfile::where('id', $vetProfile->id)->lockForUpdate()->first();
+
+            // Status guards — block dangerous approval states
+            if ($vetProfile->isApproved()) {
+                throw new \DomainException('Vet is already approved.');
+            }
+            if ($vetProfile->isRejected()) {
+                throw new \DomainException('Vet was previously rejected. A new application is required.');
+            }
+            if ($vetProfile->isSuspended()) {
+                throw new \DomainException('Vet is suspended. Use reactivation instead of approval.');
+            }
+            if (!$vetProfile->isPending()) {
+                throw new \DomainException("Only pending vets can be approved. Current status: {$vetProfile->vet_status}");
+            }
+
+            // Profile completeness check
+            $missingFields = $this->verificationService->getMissingFields($vetProfile);
+            if (count($missingFields) > 0) {
+                $this->logVerificationFailure($vetProfile, $admin, 'approval_blocked', 'Profile incomplete', $missingFields);
+                throw new VetApprovalException('Vet profile incomplete', $missingFields);
+            }
+
+            // Document verification check
+            $missingDocs = $this->verificationService->getMissingDocuments($vetProfile);
+            if (count($missingDocs) > 0) {
+                $this->logVerificationFailure($vetProfile, $admin, 'approval_blocked', 'Documents missing', $missingDocs);
+                throw new VetDocumentException('Required documents missing or corrupted', $missingDocs);
+            }
+
+            // All clear — approve
             $vetProfile->update([
                 'is_verified'      => true,
                 'vet_status'       => 'approved',
@@ -194,10 +242,17 @@ class VetOnboardingService
                 'verified_by'      => $admin->id,
             ]);
 
+            // Create persistent verification record with snapshot
+            $this->verificationService->createVerificationRecord(
+                $vetProfile, $admin, 'approved', $notes
+            );
+
+            // Audit log
             VetVerificationLog::create([
                 'vet_profile_id' => $vetProfile->id,
                 'admin_id'       => $admin->id,
                 'action'         => 'approved',
+                'reason'         => $notes,
                 'metadata'       => [
                     'license_number' => $vetProfile->license_number,
                     'vet_name'       => $vetProfile->vet_name,
@@ -219,6 +274,12 @@ class VetOnboardingService
     public function rejectVet(VetProfile $vetProfile, User $admin, string $reason): VetProfile
     {
         return DB::transaction(function () use ($vetProfile, $admin, $reason) {
+            $vetProfile = VetProfile::where('id', $vetProfile->id)->lockForUpdate()->first();
+
+            if (!$vetProfile->isPending()) {
+                throw new \DomainException("Only pending vets can be rejected. Current status: {$vetProfile->vet_status}");
+            }
+
             $vetProfile->update([
                 'is_verified'      => false,
                 'vet_status'       => 'rejected',
@@ -226,6 +287,11 @@ class VetOnboardingService
                 'verified_at'      => null,
                 'verified_by'      => null,
             ]);
+
+            // Persistent verification record with snapshot
+            $this->verificationService->createVerificationRecord(
+                $vetProfile, $admin, 'rejected', $reason
+            );
 
             VetVerificationLog::create([
                 'vet_profile_id' => $vetProfile->id,
@@ -254,11 +320,22 @@ class VetOnboardingService
     public function suspendVet(VetProfile $vetProfile, User $admin, string $reason): VetProfile
     {
         return DB::transaction(function () use ($vetProfile, $admin, $reason) {
+            $vetProfile = VetProfile::where('id', $vetProfile->id)->lockForUpdate()->first();
+
+            if (!$vetProfile->isApproved()) {
+                throw new \DomainException("Only approved vets can be suspended. Current status: {$vetProfile->vet_status}");
+            }
+
             $vetProfile->update([
                 'vet_status'       => 'suspended',
                 'is_active'        => false,
                 'rejection_reason' => $reason,
             ]);
+
+            // Persistent verification record with snapshot
+            $this->verificationService->createVerificationRecord(
+                $vetProfile, $admin, 'suspended', $reason
+            );
 
             VetVerificationLog::create([
                 'vet_profile_id' => $vetProfile->id,
@@ -287,11 +364,22 @@ class VetOnboardingService
     public function reactivateVet(VetProfile $vetProfile, User $admin, ?string $reason = null): VetProfile
     {
         return DB::transaction(function () use ($vetProfile, $admin, $reason) {
+            $vetProfile = VetProfile::where('id', $vetProfile->id)->lockForUpdate()->first();
+
+            if (!$vetProfile->isSuspended()) {
+                throw new \DomainException("Only suspended vets can be reactivated. Current status: {$vetProfile->vet_status}");
+            }
+
             $vetProfile->update([
                 'vet_status'       => 'approved',
                 'is_active'        => true,
                 'rejection_reason' => null,
             ]);
+
+            // Persistent verification record with snapshot
+            $this->verificationService->createVerificationRecord(
+                $vetProfile, $admin, 'reactivated', $reason
+            );
 
             VetVerificationLog::create([
                 'vet_profile_id' => $vetProfile->id,
@@ -322,6 +410,31 @@ class VetOnboardingService
             ->with('admin:id,name,email')
             ->orderByDesc('created_at')
             ->get();
+    }
+
+    /**
+     * Log a verification failure (blocked approval attempt).
+     */
+    private function logVerificationFailure(
+        VetProfile $vetProfile,
+        User $admin,
+        string $failureType,
+        array $details
+    ): void {
+        VetVerificationLog::create([
+            'vet_profile_id' => $vetProfile->id,
+            'admin_id'       => $admin->id,
+            'action'         => 'approval_blocked',
+            'reason'         => "Approval blocked: {$failureType}",
+            'metadata'       => $details,
+        ]);
+
+        Log::channel('stack')->warning('Vet approval blocked', [
+            'vet_profile_id' => $vetProfile->id,
+            'admin_id'       => $admin->id,
+            'failure_type'   => $failureType,
+            'details'        => $details,
+        ]);
     }
 
     private function extractCityFromAddress(string $address): string

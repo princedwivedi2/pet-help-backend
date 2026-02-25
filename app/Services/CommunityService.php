@@ -145,6 +145,49 @@ class CommunityService
 
     // ─── Votes ──────────────────────────────────────────────────────
 
+    /**
+     * Check if a user has voted on a specific post.
+     */
+    public function hasUserVotedOnPost(int $postId, int $userId): bool
+    {
+        return CommunityVote::where('votable_type', CommunityPost::class)
+            ->where('votable_id', $postId)
+            ->where('user_id', $userId)
+            ->exists();
+    }
+
+    /**
+     * Resolve a votable entity by type string and UUID.
+     *
+     * @return array{model: \Illuminate\Database\Eloquent\Model, type: string}|null
+     */
+    public function resolveVotable(string $type, string $uuid): ?array
+    {
+        if ($type === 'post') {
+            $model = CommunityPost::where('uuid', $uuid)->first();
+            return $model ? ['model' => $model, 'type' => CommunityPost::class] : null;
+        }
+
+        $model = CommunityReply::where('uuid', $uuid)->first();
+        return $model ? ['model' => $model, 'type' => CommunityReply::class] : null;
+    }
+
+    /**
+     * Resolve a reportable entity by type string and UUID.
+     *
+     * @return array{model: \Illuminate\Database\Eloquent\Model, type: string}|null
+     */
+    public function resolveReportable(string $type, string $uuid): ?array
+    {
+        if ($type === 'post') {
+            $model = CommunityPost::where('uuid', $uuid)->first();
+            return $model ? ['model' => $model, 'type' => CommunityPost::class] : null;
+        }
+
+        $model = CommunityReply::where('uuid', $uuid)->first();
+        return $model ? ['model' => $model, 'type' => CommunityReply::class] : null;
+    }
+
     public function toggleVote(string $votableType, int $votableId, int $userId): array
     {
         return DB::transaction(function () use ($votableType, $votableId, $userId) {
@@ -190,6 +233,20 @@ class CommunityService
         ]);
 
         return $report->load('user:id,name');
+    }
+
+    public function getReports(int $perPage = 20, ?string $status = null): LengthAwarePaginator
+    {
+        $query = CommunityReport::with(['user:id,name', 'reportable'])
+            ->orderByDesc('created_at');
+
+        if ($status) {
+            $query->where('status', $status);
+        } else {
+            $query->pending();
+        }
+
+        return $query->paginate($perPage);
     }
 
     public function getPendingReports(int $perPage = 20): LengthAwarePaginator

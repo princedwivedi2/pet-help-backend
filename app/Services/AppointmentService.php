@@ -98,26 +98,28 @@ class AppointmentService
             throw new \DomainException('This appointment cannot be marked as completed.');
         }
 
-        $updateData = ['status' => 'completed'];
-        if ($notes) {
-            $updateData['notes'] = $notes;
-        }
+        return DB::transaction(function () use ($appointment, $notes) {
+            $updateData = ['status' => 'completed'];
+            if ($notes) {
+                $updateData['notes'] = $notes;
+            }
 
-        $appointment->update($updateData);
+            $appointment->update($updateData);
 
-        Log::info('Appointment completed', [
-            'appointment_uuid' => $appointment->uuid,
-        ]);
+            Log::info('Appointment completed', [
+                'appointment_uuid' => $appointment->uuid,
+            ]);
 
-        try {
-            $appointment->user->notify(
-                new AppointmentStatusNotification($appointment, 'confirmed')
-            );
-        } catch (\Throwable $e) {
-            report($e);
-        }
+            try {
+                $appointment->user->notify(
+                    new AppointmentStatusNotification($appointment, 'confirmed')
+                );
+            } catch (\Throwable $e) {
+                report($e);
+            }
 
-        return $appointment->fresh(['user:id,name', 'vetProfile:id,uuid,clinic_name,vet_name', 'pet:id,name,species']);
+            return $appointment->fresh(['user:id,name', 'vetProfile:id,uuid,clinic_name,vet_name', 'pet:id,name,species']);
+        });
     }
 
     /**
@@ -129,34 +131,66 @@ class AppointmentService
             throw new \DomainException('You cannot cancel this appointment.');
         }
 
-        $previousStatus = $appointment->status;
+        return DB::transaction(function () use ($appointment, $cancelledBy, $reason) {
+            $previousStatus = $appointment->status;
 
-        $appointment->update([
-            'status'              => 'cancelled',
-            'cancellation_reason' => $reason,
-            'cancelled_by'        => $cancelledBy->id,
-        ]);
+            $appointment->update([
+                'status'              => 'cancelled',
+                'cancellation_reason' => $reason,
+                'cancelled_by'        => $cancelledBy->id,
+            ]);
 
-        Log::info('Appointment cancelled', [
-            'appointment_uuid' => $appointment->uuid,
-            'cancelled_by'     => $cancelledBy->id,
-            'reason'           => $reason,
-        ]);
+            Log::info('Appointment cancelled', [
+                'appointment_uuid' => $appointment->uuid,
+                'cancelled_by'     => $cancelledBy->id,
+                'reason'           => $reason,
+            ]);
 
-        // Notify the other party
-        try {
-            $notifyUser = ($cancelledBy->id === $appointment->user_id)
-                ? $appointment->vetProfile->user
-                : $appointment->user;
+            // Notify the other party
+            try {
+                $notifyUser = ($cancelledBy->id === $appointment->user_id)
+                    ? $appointment->vetProfile->user
+                    : $appointment->user;
 
-            $notifyUser?->notify(
-                new AppointmentStatusNotification($appointment, $previousStatus)
-            );
-        } catch (\Throwable $e) {
-            report($e);
+                $notifyUser?->notify(
+                    new AppointmentStatusNotification($appointment, $previousStatus)
+                );
+            } catch (\Throwable $e) {
+                report($e);
+            }
+
+            return $appointment->fresh(['user:id,name', 'vetProfile:id,uuid,clinic_name,vet_name', 'pet:id,name,species']);
+        });
+    }
+
+    /**
+     * Mark an appointment as no-show (vet action).
+     */
+    public function markNoShow(Appointment $appointment): Appointment
+    {
+        if ($appointment->status !== 'confirmed') {
+            throw new \DomainException('Only confirmed appointments can be marked as no-show.');
         }
 
-        return $appointment->fresh(['user:id,name', 'vetProfile:id,uuid,clinic_name,vet_name', 'pet:id,name,species']);
+        return DB::transaction(function () use ($appointment) {
+            $appointment->update(['status' => 'no_show']);
+
+            Log::info('Appointment marked no-show', [
+                'appointment_uuid' => $appointment->uuid,
+                'vet_profile_id'   => $appointment->vet_profile_id,
+            ]);
+
+            // Notify the pet owner
+            try {
+                $appointment->user->notify(
+                    new AppointmentStatusNotification($appointment, 'confirmed')
+                );
+            } catch (\Throwable $e) {
+                report($e);
+            }
+
+            return $appointment->fresh(['user:id,name', 'vetProfile:id,uuid,clinic_name,vet_name', 'pet:id,name,species']);
+        });
     }
 
     /**

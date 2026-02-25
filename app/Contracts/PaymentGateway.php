@@ -37,3 +37,4 @@ interface PaymentGateway
      */
     public function refund(string $paymentId, ?int $amount = null): array;
 }
+ 

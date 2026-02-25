@@ -87,35 +87,39 @@ class SosController extends Controller
     {
         $user = $request->user();
 
-        $sosRequest = SosRequest::where('uuid', $uuid)
-            ->where('user_id', $user->id)
-            ->first();
+        // Owner can cancel/complete; vets and admins can also update status
+        $sosRequest = SosRequest::where('uuid', $uuid)->first();
 
         if (!$sosRequest) {
-            return $this->notFound('SOS request not found', [
-                'sos' => ['SOS request not found or does not belong to you.'],
-            ]);
+            return $this->notFound('SOS request not found');
+        }
+
+        $isOwner = $sosRequest->user_id === $user->id;
+        $isVet   = $user->isVet();
+        $isAdmin = $user->isAdmin();
+
+        if (!$isOwner && !$isVet && !$isAdmin) {
+            return $this->forbidden('You do not have permission to update this SOS request.');
         }
 
         $newStatus = $request->status;
 
-        if ($newStatus === 'cancelled' && !$sosRequest->canBeCancelled()) {
-            return $this->validationError('Cannot cancel SOS', [
-                'status' => ['This SOS request cannot be cancelled in its current state.'],
-            ]);
+        // Only owner or admin can cancel
+        if ($newStatus === 'cancelled' && !$isOwner && !$isAdmin) {
+            return $this->forbidden('Only the SOS owner or an admin can cancel the request.');
         }
 
-        if ($newStatus === 'completed' && !$sosRequest->canBeCompleted()) {
-            return $this->validationError('Cannot complete SOS', [
-                'status' => ['This SOS request cannot be completed in its current state.'],
+        try {
+            $sosRequest = $this->sosService->updateStatus(
+                $sosRequest,
+                $newStatus,
+                $request->resolution_notes
+            );
+        } catch (\DomainException $e) {
+            return $this->validationError($e->getMessage(), [
+                'status' => [$e->getMessage()],
             ]);
         }
-
-        $sosRequest = $this->sosService->updateStatus(
-            $sosRequest,
-            $newStatus,
-            $request->resolution_notes
-        );
 
         return $this->success('SOS status updated successfully', ['sos' => $sosRequest]);
     }

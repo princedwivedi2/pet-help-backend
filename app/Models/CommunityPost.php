@@ -15,7 +15,6 @@ class CommunityPost extends Model
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
-        'uuid',
         'topic_id',
         'user_id',
         'title',

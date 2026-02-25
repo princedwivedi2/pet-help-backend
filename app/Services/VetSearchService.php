@@ -46,7 +46,8 @@ class VetSearchService
         }
 
         if ($city) {
-            $query->where('city', 'LIKE', '%' . $city . '%');
+            $escapedCity = str_replace(['%', '_', '\\'], ['\\%', '\\_', '\\\\'], $city);
+            $query->where('city', 'LIKE', '%' . $escapedCity . '%');
         }
 
         if ($specialization) {

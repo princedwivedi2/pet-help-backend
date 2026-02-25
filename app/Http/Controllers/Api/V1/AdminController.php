@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Exceptions\VetApprovalException;
+use App\Exceptions\VetDocumentException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\Vet\VetApproveRequest;
 use App\Http\Requests\Api\V1\Vet\VetRejectRequest;
@@ -13,6 +15,7 @@ use App\Models\User;
 use App\Models\VetProfile;
 use App\Services\AdminMetricsService;
 use App\Services\VetOnboardingService;
+use App\Services\VetVerificationService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -24,7 +27,16 @@ class AdminController extends Controller
     public function __construct(
         private VetOnboardingService $vetOnboardingService,
         private AdminMetricsService $adminMetricsService,
+        private VetVerificationService $vetVerificationService,
     ) {}
+
+    /**
+     * Escape LIKE wildcard characters in search input.
+     */
+    private function escapeLike(string $value): string
+    {
+        return str_replace(['%', '_', '\\'], ['\\%', '\\_', '\\\\'], $value);
+    }
 
     // ─── Users ───────────────────────────────────────────────────────
 
@@ -42,7 +54,7 @@ class AdminController extends Controller
         }
 
         if ($request->filled('search')) {
-            $search = $request->search;
+            $search = $this->escapeLike($request->search);
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
                   ->orWhere('email', 'like', "%{$search}%");
@@ -84,7 +96,9 @@ class AdminController extends Controller
             ]);
         }
 
-        $user->update(['role' => $request->role]);
+        // Set role explicitly — not mass-assignable for security
+        $user->role = $request->role;
+        $user->save();
 
         return $this->success('User role updated successfully', ['user' => $user]);
     }
@@ -106,7 +120,7 @@ class AdminController extends Controller
         }
 
         if ($request->filled('search')) {
-            $search = $request->search;
+            $search = $this->escapeLike($request->search);
             $query->where(function ($q) use ($search) {
                 $q->where('description', 'like', "%{$search}%")
                   ->orWhere('emergency_type', 'like', "%{$search}%")
@@ -185,7 +199,7 @@ class AdminController extends Controller
         $query = \App\Models\Pet::with(['user:id,name,email']);
 
         if ($request->filled('search')) {
-            $search = $request->search;
+            $search = $this->escapeLike($request->search);
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
                   ->orWhere('species', 'like', "%{$search}%")
@@ -294,6 +308,7 @@ class AdminController extends Controller
         }
 
         if ($search) {
+            $search = $this->escapeLike($search);
             $query->where(function ($q) use ($search) {
                 $q->where('vet_name', 'like', "%{$search}%")
                   ->orWhere('clinic_name', 'like', "%{$search}%")
@@ -376,6 +391,28 @@ class AdminController extends Controller
     }
 
     /**
+     * Review a vet profile before approval — returns eligibility, missing fields, documents, snapshot.
+     *
+     * GET /api/v1/admin/vets/{uuid}/review
+     */
+    public function reviewVet(string $uuid): JsonResponse
+    {
+        $vetProfile = VetProfile::where('uuid', $uuid)
+            ->with(['user:id,name,email', 'verificationLogs' => function ($q) {
+                $q->with('admin:id,name')->orderByDesc('created_at')->limit(10);
+            }])
+            ->first();
+
+        if (!$vetProfile) {
+            return $this->notFound('Vet profile not found');
+        }
+
+        $reviewData = $this->vetVerificationService->buildReviewData($vetProfile);
+
+        return $this->success('Vet review data retrieved', $reviewData);
+    }
+
+    /**
      * Approve a vet profile.
      *
      * PUT /api/v1/admin/vets/{uuid}/approve
@@ -388,7 +425,23 @@ class AdminController extends Controller
             return $this->notFound('Vet profile not found');
         }
 
-        $vetProfile = $this->vetOnboardingService->approveVet($vetProfile, $request->user());
+        try {
+            $vetProfile = $this->vetOnboardingService->approveVet(
+                $vetProfile,
+                $request->user(),
+                $request->notes ?? null
+            );
+        } catch (VetApprovalException $e) {
+            return $this->error($e->getMessage(), [
+                'missing_fields' => $e->getMissingFields(),
+            ], 422);
+        } catch (VetDocumentException $e) {
+            return $this->error($e->getMessage(), [
+                'missing_documents' => $e->getMissingDocuments(),
+            ], 422);
+        } catch (\DomainException $e) {
+            return $this->error($e->getMessage(), [], 409);
+        }
 
         return $this->success('Vet approved successfully', ['vet_profile' => $vetProfile]);
     }
@@ -406,11 +459,15 @@ class AdminController extends Controller
             return $this->notFound('Vet profile not found');
         }
 
-        $vetProfile = $this->vetOnboardingService->rejectVet(
-            $vetProfile,
-            $request->user(),
-            $request->reason
-        );
+        try {
+            $vetProfile = $this->vetOnboardingService->rejectVet(
+                $vetProfile,
+                $request->user(),
+                $request->reason
+            );
+        } catch (\DomainException $e) {
+            return $this->error($e->getMessage(), [], 409);
+        }
 
         return $this->success('Vet rejected successfully', ['vet_profile' => $vetProfile]);
     }
@@ -430,16 +487,30 @@ class AdminController extends Controller
 
         $admin = $request->user();
 
-        if ($request->action === 'approve') {
-            $vetProfile = $this->vetOnboardingService->approveVet($vetProfile, $admin);
-            return $this->success('Vet approved successfully', ['vet_profile' => $vetProfile]);
-        }
+        try {
+            if ($request->action === 'approve') {
+                $vetProfile = $this->vetOnboardingService->approveVet(
+                    $vetProfile, $admin, $request->notes ?? null
+                );
+                return $this->success('Vet approved successfully', ['vet_profile' => $vetProfile]);
+            }
 
-        $vetProfile = $this->vetOnboardingService->rejectVet(
-            $vetProfile,
-            $admin,
-            $request->reason
-        );
+            $vetProfile = $this->vetOnboardingService->rejectVet(
+                $vetProfile,
+                $admin,
+                $request->reason
+            );
+        } catch (VetApprovalException $e) {
+            return $this->error($e->getMessage(), [
+                'missing_fields' => $e->getMissingFields(),
+            ], 422);
+        } catch (VetDocumentException $e) {
+            return $this->error($e->getMessage(), [
+                'missing_documents' => $e->getMissingDocuments(),
+            ], 422);
+        } catch (\DomainException $e) {
+            return $this->error($e->getMessage(), [], 409);
+        }
 
         return $this->success('Vet rejected', ['vet_profile' => $vetProfile]);
     }
@@ -457,11 +528,15 @@ class AdminController extends Controller
             return $this->notFound('Vet profile not found');
         }
 
-        $vetProfile = $this->vetOnboardingService->suspendVet(
-            $vetProfile,
-            $request->user(),
-            $request->reason
-        );
+        try {
+            $vetProfile = $this->vetOnboardingService->suspendVet(
+                $vetProfile,
+                $request->user(),
+                $request->reason
+            );
+        } catch (\DomainException $e) {
+            return $this->error($e->getMessage(), [], 409);
+        }
 
         return $this->success('Vet suspended successfully', ['vet_profile' => $vetProfile]);
     }
@@ -483,11 +558,15 @@ class AdminController extends Controller
             return $this->notFound('Vet profile not found');
         }
 
-        $vetProfile = $this->vetOnboardingService->reactivateVet(
-            $vetProfile,
-            $request->user(),
-            $request->reason ?? 'Reactivated by admin'
-        );
+        try {
+            $vetProfile = $this->vetOnboardingService->reactivateVet(
+                $vetProfile,
+                $request->user(),
+                $request->reason ?? 'Reactivated by admin'
+            );
+        } catch (\DomainException $e) {
+            return $this->error($e->getMessage(), [], 409);
+        }
 
         return $this->success('Vet reactivated successfully', ['vet_profile' => $vetProfile]);
     }
