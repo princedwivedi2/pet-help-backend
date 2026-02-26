@@ -25,14 +25,16 @@ class Appointment extends Model
         'cancelled_by',
         'payment_status',
         'fee_amount',
+        'cancelled_at_slot_release',
     ];
 
     protected function casts(): array
     {
         return [
-            'scheduled_at'     => 'datetime',
-            'duration_minutes' => 'integer',
-            'fee_amount'       => 'integer',
+            'scheduled_at'              => 'datetime',
+            'duration_minutes'          => 'integer',
+            'fee_amount'                => 'integer',
+            'cancelled_at_slot_release' => 'datetime',
         ];
     }
 
@@ -114,7 +116,7 @@ class Appointment extends Model
         }
 
         return $user->id === $this->user_id
-            || ($user->isVet() && $user->vetProfile?->id === $this->vet_profile_id)
+            || ($user->isVet() && $this->vet_profile_id !== null && $user->vetProfile?->id === $this->vet_profile_id)
             || $user->isAdmin();
     }
 

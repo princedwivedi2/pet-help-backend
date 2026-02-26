@@ -183,15 +183,16 @@ class AdminMetricsService implements AdminMetrics
 
     /**
      * Get geographic distribution of users/vets.
+     * Note: city column was removed — extract city-like substring from address.
      */
     public function getGeoDistribution(string $entity = 'users'): array
     {
         if ($entity === 'vets') {
             return VetProfile::query()
-                ->selectRaw('city, COUNT(*) as count')
-                ->whereNotNull('city')
-                ->where('city', '!=', '')
-                ->groupBy('city')
+                ->selectRaw("TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(address, ',', -2), ',', 1)) AS city, COUNT(*) as count")
+                ->whereNotNull('address')
+                ->where('address', '!=', '')
+                ->groupByRaw("TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(address, ',', -2), ',', 1))")
                 ->orderByDesc('count')
                 ->limit(20)
                 ->get()

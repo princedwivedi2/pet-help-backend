@@ -301,7 +301,7 @@ class AdminController extends Controller
         $status = $request->query('status');
         $search = $request->query('search');
 
-        $query = VetProfile::with(['user:id,name,email', 'verifiedByAdmin:id,name']);
+        $query = VetProfile::with(['user:id,name,email']);
 
         if ($status) {
             $query->byStatus($status);
@@ -362,8 +362,7 @@ class AdminController extends Controller
         $vetProfile = VetProfile::where('uuid', $uuid)
             ->with([
                 'user:id,name,email,phone,created_at',
-                'verifiedByAdmin:id,name,email',
-                'verificationLogs' => function ($q) {
+                'verifications' => function ($q) {
                     $q->with('admin:id,name')->orderByDesc('created_at');
                 },
                 'availabilities',
@@ -398,7 +397,7 @@ class AdminController extends Controller
     public function reviewVet(string $uuid): JsonResponse
     {
         $vetProfile = VetProfile::where('uuid', $uuid)
-            ->with(['user:id,name,email', 'verificationLogs' => function ($q) {
+            ->with(['user:id,name,email', 'verifications' => function ($q) {
                 $q->with('admin:id,name')->orderByDesc('created_at')->limit(10);
             }])
             ->first();

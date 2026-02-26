@@ -95,13 +95,13 @@ class CommunityService
 
     public function toggleLock(CommunityPost $post): CommunityPost
     {
-        $post->update(['is_locked' => !$post->is_locked]);
+        CommunityPost::where('id', $post->id)->update(['is_locked' => DB::raw('NOT is_locked')]);
         return $post->fresh(['user:id,name', 'topic:id,uuid,name,slug']);
     }
 
     public function toggleVisibility(CommunityPost $post): CommunityPost
     {
-        $post->update(['is_hidden' => !$post->is_hidden]);
+        CommunityPost::where('id', $post->id)->update(['is_hidden' => DB::raw('NOT is_hidden')]);
         return $post->fresh(['user:id,name', 'topic:id,uuid,name,slug']);
     }
 

@@ -8,6 +8,7 @@ use App\Http\Requests\Api\V1\Vet\VetRegisterRequest;
 use App\Models\VetProfile;
 use App\Services\VetOnboardingService;
 use App\Traits\ApiResponse;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -32,7 +33,12 @@ class VetOnboardingController extends Controller
         $data  = $request->validated();
         $files = $request->file('documents', []);
 
-        $result = $this->vetOnboardingService->apply($data, $files);
+        try {
+            $result = $this->vetOnboardingService->apply($data, $files);
+        } catch (QueryException $e) {
+            report($e);
+            return $this->error('Registration failed. This email or license number may already be in use.', null, 409);
+        }
 
         return $this->created('Vet application submitted successfully. Your profile is under review.', [
             'user'        => $result['user'],
@@ -51,7 +57,12 @@ class VetOnboardingController extends Controller
         $data  = $request->validated();
         $files = [];
 
-        $result = $this->vetOnboardingService->apply($data, $files);
+        try {
+            $result = $this->vetOnboardingService->apply($data, $files);
+        } catch (QueryException $e) {
+            report($e);
+            return $this->error('Registration failed. This email or license number may already be in use.', null, 409);
+        }
 
         return $this->created('Vet registered successfully. Your profile is pending verification.', [
             'user'        => $result['user'],
@@ -101,11 +112,16 @@ class VetOnboardingController extends Controller
             return $this->notFound('Vet profile not found.');
         }
 
-        $path = $this->vetOnboardingService->uploadDocument(
-            $vetProfile,
-            $request->file('document'),
-            $request->document_type
-        );
+        try {
+            $path = $this->vetOnboardingService->uploadDocument(
+                $vetProfile,
+                $request->file('document'),
+                $request->document_type
+            );
+        } catch (\Throwable $e) {
+            report($e);
+            return $this->error('Document upload failed. Please try again.', null, 500);
+        }
 
         return $this->success('Document uploaded successfully', [
             'document_path' => $path,

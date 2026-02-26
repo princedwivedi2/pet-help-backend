@@ -47,7 +47,7 @@ class VetSearchService
 
         if ($city) {
             $escapedCity = str_replace(['%', '_', '\\'], ['\\%', '\\_', '\\\\'], $city);
-            $query->where('city', 'LIKE', '%' . $escapedCity . '%');
+            $query->where('address', 'LIKE', '%' . $escapedCity . '%');
         }
 
         if ($specialization) {
@@ -55,11 +55,10 @@ class VetSearchService
         }
 
         if ($minRating !== null) {
-            $query->where('rating', '>=', $minRating);
+            // Rating column removed — skip filter until ratings system is implemented
         }
 
         $query = match ($sortBy) {
-            'rating' => $query->orderByDesc('rating')->orderBy('distance_km'),
             'distance' => $query->orderBy('distance_km'),
             default => $query->orderBy('distance_km'),
         };

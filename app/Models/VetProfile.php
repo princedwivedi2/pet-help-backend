@@ -20,7 +20,6 @@ class VetProfile extends Model
         'phone',
         'email',
         'address',
-        'city',
         'state',
         'postal_code',
         'latitude',
@@ -33,11 +32,7 @@ class VetProfile extends Model
         'accepted_species',
         'is_emergency_available',
         'is_24_hours',
-        'is_verified',
         'vet_status',
-        'rejection_reason',
-        'verified_at',
-        'verified_by',
         'is_active',
     ];
 
@@ -50,12 +45,8 @@ class VetProfile extends Model
             'accepted_species' => 'array',
             'is_emergency_available' => 'boolean',
             'is_24_hours' => 'boolean',
-            'is_verified' => 'boolean',
             'is_active' => 'boolean',
-            'rating' => 'decimal:1',
-            'review_count' => 'integer',
             'years_of_experience' => 'integer',
-            'verified_at' => 'datetime',
         ];
     }
 
@@ -73,14 +64,13 @@ class VetProfile extends Model
         return $this->belongsTo(User::class);
     }
 
-    public function verifiedByAdmin(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'verified_by');
-    }
-
+    /**
+     * @deprecated Use verifications() relationship instead.
+     * Alias kept for backward compatibility during transition.
+     */
     public function verificationLogs(): HasMany
     {
-        return $this->hasMany(VetVerificationLog::class);
+        return $this->verifications();
     }
 
     public function verifications(): HasMany
@@ -120,8 +110,7 @@ class VetProfile extends Model
 
     public function scopeVerified($query)
     {
-        return $query->where('is_verified', true)
-            ->where('vet_status', 'approved');
+        return $query->where('vet_status', 'approved');
     }
 
     public function scopeUnverified($query)

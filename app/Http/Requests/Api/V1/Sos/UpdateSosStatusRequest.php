@@ -15,7 +15,7 @@ class UpdateSosStatusRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'status' => ['required', Rule::in(['cancelled', 'completed'])],
+            'status' => ['required', Rule::in(['acknowledged', 'in_progress', 'cancelled', 'completed'])],
             'resolution_notes' => ['nullable', 'string', 'max:2000'],
         ];
     }
@@ -23,7 +23,7 @@ class UpdateSosStatusRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'status.in' => 'Status must be either cancelled or completed.',
+            'status.in' => 'Status must be acknowledged, in_progress, cancelled, or completed.',
         ];
     }
 }

@@ -157,11 +157,14 @@ class BlogService
 
     public function togglePublish(BlogPost $post): BlogPost
     {
-        if ($post->isPublished()) {
-            $post->update(['status' => 'draft', 'published_at' => null]);
-        } else {
-            $post->update(['status' => 'published', 'published_at' => now()]);
-        }
+        DB::transaction(function () use ($post) {
+            $post = BlogPost::where('id', $post->id)->lockForUpdate()->first();
+            if ($post->isPublished()) {
+                $post->update(['status' => 'draft', 'published_at' => null]);
+            } else {
+                $post->update(['status' => 'published', 'published_at' => now()]);
+            }
+        });
 
         return $post->fresh(['author:id,name', 'category:id,uuid,name,slug', 'tags:id,uuid,name,slug']);
     }
@@ -239,7 +242,7 @@ class BlogService
 
     public function toggleCommentApproval(BlogComment $comment): BlogComment
     {
-        $comment->update(['is_approved' => !$comment->is_approved]);
+        BlogComment::where('id', $comment->id)->update(['is_approved' => DB::raw('NOT is_approved')]);
         return $comment->fresh('user:id,name');
     }
 

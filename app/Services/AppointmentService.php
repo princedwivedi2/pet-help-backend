@@ -65,6 +65,8 @@ class AppointmentService
     public function confirm(Appointment $appointment): Appointment
     {
         return DB::transaction(function () use ($appointment) {
+            $appointment = Appointment::where('id', $appointment->id)->lockForUpdate()->first();
+
             if (!$appointment->canBeConfirmed()) {
                 throw new \DomainException('This appointment cannot be confirmed.');
             }
@@ -94,12 +96,17 @@ class AppointmentService
      */
     public function complete(Appointment $appointment, ?string $notes = null): Appointment
     {
-        if (!$appointment->canBeCompleted()) {
-            throw new \DomainException('This appointment cannot be marked as completed.');
-        }
-
         return DB::transaction(function () use ($appointment, $notes) {
-            $updateData = ['status' => 'completed'];
+            $appointment = Appointment::where('id', $appointment->id)->lockForUpdate()->first();
+
+            if (!$appointment->canBeCompleted()) {
+                throw new \DomainException('This appointment cannot be marked as completed.');
+            }
+
+            $updateData = [
+                'status'                    => 'completed',
+                'cancelled_at_slot_release' => now(),
+            ];
             if ($notes) {
                 $updateData['notes'] = $notes;
             }
@@ -127,17 +134,20 @@ class AppointmentService
      */
     public function cancel(Appointment $appointment, User $cancelledBy, string $reason): Appointment
     {
-        if (!$appointment->canBeCancelledBy($cancelledBy)) {
-            throw new \DomainException('You cannot cancel this appointment.');
-        }
-
         return DB::transaction(function () use ($appointment, $cancelledBy, $reason) {
+            $appointment = Appointment::where('id', $appointment->id)->lockForUpdate()->first();
+
+            if (!$appointment->canBeCancelledBy($cancelledBy)) {
+                throw new \DomainException('You cannot cancel this appointment.');
+            }
+
             $previousStatus = $appointment->status;
 
             $appointment->update([
-                'status'              => 'cancelled',
-                'cancellation_reason' => $reason,
-                'cancelled_by'        => $cancelledBy->id,
+                'status'                    => 'cancelled',
+                'cancellation_reason'       => $reason,
+                'cancelled_by'              => $cancelledBy->id,
+                'cancelled_at_slot_release' => now(),
             ]);
 
             Log::info('Appointment cancelled', [
@@ -149,7 +159,7 @@ class AppointmentService
             // Notify the other party
             try {
                 $notifyUser = ($cancelledBy->id === $appointment->user_id)
-                    ? $appointment->vetProfile->user
+                    ? $appointment->vetProfile?->user
                     : $appointment->user;
 
                 $notifyUser?->notify(
@@ -168,12 +178,16 @@ class AppointmentService
      */
     public function markNoShow(Appointment $appointment): Appointment
     {
-        if ($appointment->status !== 'confirmed') {
-            throw new \DomainException('Only confirmed appointments can be marked as no-show.');
-        }
-
         return DB::transaction(function () use ($appointment) {
-            $appointment->update(['status' => 'no_show']);
+            $appointment = Appointment::where('id', $appointment->id)->lockForUpdate()->first();
+
+            if ($appointment->status !== 'confirmed') {
+                throw new \DomainException('Only confirmed appointments can be marked as no-show.');
+            }
+            $appointment->update([
+                'status'                    => 'no_show',
+                'cancelled_at_slot_release' => now(),
+            ]);
 
             Log::info('Appointment marked no-show', [
                 'appointment_uuid' => $appointment->uuid,

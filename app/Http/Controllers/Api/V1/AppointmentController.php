@@ -9,6 +9,7 @@ use App\Models\Appointment;
 use App\Models\VetProfile;
 use App\Services\AppointmentService;
 use App\Traits\ApiResponse;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -101,6 +102,10 @@ class AppointmentController extends Controller
             ]);
         } catch (\DomainException $e) {
             return $this->error($e->getMessage(), null, 409);
+        } catch (QueryException $e) {
+            // FK or unique-constraint violation (InnoDB enforcement)
+            report($e);
+            return $this->error('This time slot is no longer available. Please choose another.', null, 409);
         }
     }
 
@@ -148,6 +153,9 @@ class AppointmentController extends Controller
             ]);
         } catch (\DomainException $e) {
             return $this->error($e->getMessage(), null, 422);
+        } catch (QueryException $e) {
+            report($e);
+            return $this->error('Unable to update appointment status. Please try again.', null, 409);
         }
     }
 

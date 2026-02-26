@@ -10,7 +10,6 @@ use App\Services\SosService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 
 class SosController extends Controller
 {
@@ -24,26 +23,6 @@ class SosController extends Controller
     {
         $user = $request->user();
 
-        // Check rate limit: 5 SOS requests per hour
-        $recentCount = $this->sosService->getUserSosCountLastHour($user);
-        if ($recentCount >= 5) {
-            Log::channel('stack')->warning('SOS rate limit hit', [
-                'user_id' => $user->id,
-                'count_last_hour' => $recentCount,
-            ]);
-            return $this->tooManyRequests('Rate limit exceeded', [
-                'sos' => ['You can only create 5 SOS requests per hour. Please wait before creating another.'],
-            ]);
-        }
-
-        // Check for active SOS
-        $activeSos = $this->sosService->getActiveSosForUser($user);
-        if ($activeSos) {
-            return $this->validationError('Active SOS exists', [
-                'sos' => ['You already have an active SOS request. Please complete or cancel it first.'],
-            ]);
-        }
-
         // Validate pet belongs to user
         if ($request->pet_id) {
             $pet = $user->pets()->find($request->pet_id);
@@ -54,7 +33,16 @@ class SosController extends Controller
             }
         }
 
-        $sosRequest = $this->sosService->createSos($user, $request->validated());
+        try {
+            $sosRequest = $this->sosService->createSos($user, $request->validated());
+        } catch (\DomainException $e) {
+            return $this->validationError($e->getMessage(), [
+                'sos' => [$e->getMessage()],
+            ]);
+        } catch (\Illuminate\Database\QueryException $e) {
+            report($e);
+            return $this->error('Unable to create SOS request. Please try again.', null, 409);
+        }
 
         // Find and notify nearby vets (stub) — non-blocking
         try {

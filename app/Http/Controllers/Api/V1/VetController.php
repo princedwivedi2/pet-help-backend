@@ -37,14 +37,11 @@ class VetController extends Controller
                 'vet_name' => $vet->vet_name,
                 'phone' => $vet->phone,
                 'address' => $vet->address,
-                'city' => $vet->city,
                 'latitude' => $vet->latitude,
                 'longitude' => $vet->longitude,
                 'is_emergency_available' => $vet->is_emergency_available,
                 'is_24_hours' => $vet->is_24_hours,
-                'is_verified' => $vet->is_verified,
-                'rating' => $vet->rating,
-                'review_count' => $vet->review_count,
+                'is_verified' => $vet->vet_status === 'approved',
                 'distance_km' => round($vet->distance_km, 2),
             ];
         });

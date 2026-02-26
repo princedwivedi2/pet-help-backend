@@ -20,6 +20,24 @@ class SosService
     public function createSos(User $user, array $data): SosRequest
     {
         return DB::transaction(function () use ($user, $data) {
+            // Lock user's SOS rows to prevent duplicate active SOS and rate-limit bypass
+            $activeCount = SosRequest::where('user_id', $user->id)
+                ->whereNotIn('status', ['completed', 'cancelled'])
+                ->lockForUpdate()
+                ->count();
+
+            if ($activeCount > 0) {
+                throw new \DomainException('You already have an active SOS request. Please complete or cancel it first.');
+            }
+
+            $recentCount = SosRequest::where('user_id', $user->id)
+                ->where('created_at', '>=', now()->subHour())
+                ->count();
+
+            if ($recentCount >= 5) {
+                throw new \DomainException('You can only create 5 SOS requests per hour. Please wait before creating another.');
+            }
+
             $sosRequest = SosRequest::create([
                 'user_id' => $user->id,
                 'pet_id' => $data['pet_id'] ?? null,
@@ -99,16 +117,19 @@ class SosService
 
     public function updateStatus(SosRequest $sosRequest, string $status, ?string $notes = null): SosRequest
     {
-        $current = $sosRequest->status;
-        $allowed = self::VALID_TRANSITIONS[$current] ?? [];
-
-        if (!in_array($status, $allowed, true)) {
-            throw new \DomainException(
-                "Cannot transition SOS from '{$current}' to '{$status}'. Allowed: " . (implode(', ', $allowed) ?: 'none')
-            );
-        }
-
         return DB::transaction(function () use ($sosRequest, $status, $notes) {
+            // Re-read with row lock to prevent TOCTOU race conditions
+            $sosRequest = SosRequest::where('id', $sosRequest->id)->lockForUpdate()->first();
+
+            $current = $sosRequest->status;
+            $allowed = self::VALID_TRANSITIONS[$current] ?? [];
+
+            if (!in_array($status, $allowed, true)) {
+                throw new \DomainException(
+                    "Cannot transition SOS from '{$current}' to '{$status}'. Allowed: " . (implode(', ', $allowed) ?: 'none')
+                );
+            }
+
             $previousStatus = $sosRequest->status;
             $updateData = ['status' => $status];
 

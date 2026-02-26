@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Api\V1\Appointment;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreAppointmentRequest extends FormRequest
 {
@@ -15,7 +16,7 @@ class StoreAppointmentRequest extends FormRequest
     {
         return [
             'vet_uuid'         => ['required', 'string', 'exists:vet_profiles,uuid'],
-            'pet_id'           => ['nullable', 'integer', 'exists:pets,id'],
+            'pet_id'           => ['nullable', 'integer', Rule::exists('pets', 'id')->where('user_id', $this->user()->id)],
             'scheduled_at'     => ['required', 'date', 'after:now'],
             'duration_minutes' => ['nullable', 'integer', 'min:15', 'max:120'],
             'reason'           => ['required', 'string', 'min:5', 'max:1000'],

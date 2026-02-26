@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Models\User;
 use App\Models\VetProfile;
 use App\Models\VetVerification;
-use App\Models\VetVerificationLog;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -98,7 +97,7 @@ class VetVerificationService
 
     /**
      * Get list of document types that have been uploaded for this vet.
-     * Looks at VetVerificationLog entries with 'applied' action for document_paths,
+     * Looks at VetVerification entries with 'applied' action for document_paths,
      * and any additional document uploads.
      */
     private function getUploadedDocumentTypes(VetProfile $vetProfile): array
@@ -110,15 +109,15 @@ class VetVerificationService
             $types[] = 'license_proof';
         }
 
-        // Check metadata from verification logs for additional document references
-        $logs = VetVerificationLog::where('vet_profile_id', $vetProfile->id)
-            ->whereNotNull('metadata')
+        // Check verified_fields from verification records for additional document references
+        $records = VetVerification::where('vet_profile_id', $vetProfile->id)
+            ->whereNotNull('verified_fields')
             ->get();
 
-        foreach ($logs as $log) {
-            $metadata = $log->metadata;
-            if (!empty($metadata['document_type'])) {
-                $types[] = $metadata['document_type'];
+        foreach ($records as $record) {
+            $fields = $record->verified_fields;
+            if (!empty($fields['document_type'])) {
+                $types[] = $fields['document_type'];
             }
         }
 
@@ -224,7 +223,6 @@ class VetVerificationService
             'phone'               => $vetProfile->phone,
             'clinic_name'         => $vetProfile->clinic_name,
             'address'             => $vetProfile->address,
-            'city'                => $vetProfile->city,
             'state'               => $vetProfile->state,
             'qualifications'      => $vetProfile->qualifications,
             'license_number'      => $vetProfile->license_number,
@@ -256,7 +254,7 @@ class VetVerificationService
 
     /**
      * Create a persistent VetVerification record for any admin action.
-     * This is the primary audit artifact — NOT the same as VetVerificationLog.
+     * This is the primary audit artifact for all vet verification actions.
      */
     public function createVerificationRecord(
         VetProfile $vetProfile,
@@ -290,7 +288,6 @@ class VetVerificationService
         return [
             'vet_profile'           => $vetProfile->load([
                 'user:id,name,email,phone,created_at',
-                'verifiedByAdmin:id,name,email',
             ]),
             'eligible_for_approval' => $eligibility['eligible'],
             'eligibility_reasons'   => $eligibility['reasons'],
