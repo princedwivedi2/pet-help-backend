@@ -18,6 +18,11 @@ return Application::configure(basePath: dirname(__DIR__))
             Route::prefix('api/v1')
                 ->middleware('api')
                 ->group(base_path('routes/api_v1.php'));
+
+            // Backward-compatible alias routes for clients using /api/* paths.
+            Route::prefix('api')
+                ->middleware('api')
+                ->group(base_path('routes/api_v1.php'));
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {

@@ -15,8 +15,8 @@ class SearchVetsRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'lat' => ['required', 'numeric', 'between:-90,90'],
-            'lng' => ['required', 'numeric', 'between:-180,180'],
+            'lat' => ['nullable', 'numeric', 'between:-90,90', 'required_with:lng'],
+            'lng' => ['nullable', 'numeric', 'between:-180,180', 'required_with:lat'],
             'radius_km' => ['nullable', 'numeric', 'min:1', 'max:100'],
             'available_only' => ['nullable', 'boolean'],
             'emergency_only' => ['nullable', 'boolean'],
@@ -24,14 +24,15 @@ class SearchVetsRequest extends FormRequest
             'specialization' => ['nullable', 'string', 'max:100'],
             'min_rating' => ['nullable', 'numeric', 'min:0', 'max:5'],
             'sort_by' => ['nullable', Rule::in(['distance', 'rating'])],
+            'limit' => ['nullable', 'integer', 'min:1', 'max:100'],
         ];
     }
 
     public function messages(): array
     {
         return [
-            'lat.required' => 'Latitude is required for searching nearby vets.',
-            'lng.required' => 'Longitude is required for searching nearby vets.',
+            'lat.required_with' => 'Latitude is required when longitude is provided.',
+            'lng.required_with' => 'Longitude is required when latitude is provided.',
             'lat.between' => 'Latitude must be between -90 and 90.',
             'lng.between' => 'Longitude must be between -180 and 180.',
             'radius_km.max' => 'Search radius cannot exceed 100 km.',

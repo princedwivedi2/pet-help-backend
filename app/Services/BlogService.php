@@ -7,6 +7,8 @@ use App\Models\BlogComment;
 use App\Models\BlogLike;
 use App\Models\BlogPost;
 use App\Models\BlogTag;
+use App\Models\User;
+use App\Notifications\BlogCommentNotification;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -232,7 +234,18 @@ class BlogService
             'is_approved'  => false,
         ]);
 
-        return $comment->load('user:id,name');
+        $comment->load(['user:id,name', 'blogPost:id,uuid,title']);
+
+        // Notify admins about pending comment
+        try {
+            User::where('role', 'admin')->each(function ($admin) use ($comment) {
+                $admin->notify(new BlogCommentNotification($comment, 'submitted'));
+            });
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        return $comment;
     }
 
     public function findCommentByUuid(string $uuid): ?BlogComment
@@ -243,7 +256,18 @@ class BlogService
     public function toggleCommentApproval(BlogComment $comment): BlogComment
     {
         BlogComment::where('id', $comment->id)->update(['is_approved' => DB::raw('NOT is_approved')]);
-        return $comment->fresh('user:id,name');
+        $comment = $comment->fresh(['user:id,name', 'blogPost:id,uuid,title']);
+
+        // Notify comment author when approved
+        if ($comment->is_approved && $comment->user) {
+            try {
+                $comment->user->notify(new BlogCommentNotification($comment, 'approved'));
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
+        return $comment;
     }
 
     public function deleteComment(BlogComment $comment): bool

@@ -20,6 +20,11 @@ class User extends Authenticatable implements MustVerifyEmail
         'password',
         'phone',
         'avatar',
+        'latitude',
+        'longitude',
+        'address',
+        'city',
+        'last_login_at',
     ];
 
     protected $hidden = [
@@ -32,6 +37,9 @@ class User extends Authenticatable implements MustVerifyEmail
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'latitude' => 'decimal:8',
+            'longitude' => 'decimal:8',
+            'last_login_at' => 'datetime',
         ];
     }
 
@@ -88,6 +96,26 @@ class User extends Authenticatable implements MustVerifyEmail
     public function appointments(): HasMany
     {
         return $this->hasMany(Appointment::class);
+    }
+
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(Review::class);
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(Payment::class);
+    }
+
+    public function subscriptions(): HasMany
+    {
+        return $this->hasMany(Subscription::class);
+    }
+
+    public function activeSubscription()
+    {
+        return $this->subscriptions()->active()->latest()->first();
     }
 
     public function activeSosRequest()

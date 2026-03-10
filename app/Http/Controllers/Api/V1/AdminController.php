@@ -14,6 +14,8 @@ use App\Models\SosRequest;
 use App\Models\User;
 use App\Models\VetProfile;
 use App\Services\AdminMetricsService;
+use App\Services\PaymentService;
+use App\Services\VetProfileCompletionService;
 use App\Services\VetOnboardingService;
 use App\Services\VetVerificationService;
 use App\Traits\ApiResponse;
@@ -28,6 +30,8 @@ class AdminController extends Controller
         private VetOnboardingService $vetOnboardingService,
         private AdminMetricsService $adminMetricsService,
         private VetVerificationService $vetVerificationService,
+        private PaymentService $paymentService,
+        private VetProfileCompletionService $vetProfileCompletionService,
     ) {}
 
     /**
@@ -268,13 +272,18 @@ class AdminController extends Controller
      */
     public function stats(): JsonResponse
     {
+        $paidPayments = \App\Models\Payment::paid();
+
         return $this->success('Dashboard stats retrieved', [
             'stats' => [
                 'total_users' => User::count(),
+                'total_vets' => VetProfile::count(),
+                'pending_vet_approvals' => VetProfile::byStatus('pending')->count(),
                 'total_pets' => \App\Models\Pet::count(),
                 'active_sos' => SosRequest::active()->count(),
                 'total_sos' => SosRequest::count(),
                 'total_incidents' => IncidentLog::count(),
+                'appointments_today' => \App\Models\Appointment::whereDate('scheduled_at', today())->count(),
                 'sos_by_status' => SosRequest::query()
                     ->selectRaw('status, count(*) as count')
                     ->groupBy('status')
@@ -284,6 +293,8 @@ class AdminController extends Controller
                 'total_community_topics' => \App\Models\CommunityTopic::count(),
                 'total_community_posts' => \App\Models\CommunityPost::count(),
                 'pending_reports' => \App\Models\CommunityReport::pending()->count(),
+                'platform_revenue' => (int) $paidPayments->sum('platform_fee'),
+                'gross_revenue' => (int) $paidPayments->sum('amount'),
             ],
         ]);
     }
@@ -298,8 +309,11 @@ class AdminController extends Controller
     public function vetsByStatus(Request $request): JsonResponse
     {
         $perPage = min((int) ($request->per_page ?? 20), 100);
-        $status = $request->query('status');
+        $status = $request->query('verification_status', $request->query('status'));
         $search = $request->query('search');
+        $city = $request->query('city');
+        $specialization = $request->query('specialization');
+        $experience = $request->query('experience');
 
         $query = VetProfile::with(['user:id,name,email']);
 
@@ -317,10 +331,45 @@ class AdminController extends Controller
             });
         }
 
+        if ($city) {
+            $escapedCity = $this->escapeLike($city);
+            $query->where(function ($q) use ($escapedCity) {
+                $q->where('city', 'like', "%{$escapedCity}%")
+                    ->orWhere('address', 'like', "%{$escapedCity}%");
+            });
+        }
+
+        if ($specialization) {
+            $escapedSpec = $this->escapeLike($specialization);
+            $query->where(function ($q) use ($escapedSpec) {
+                $q->where('specialization', 'like', "%{$escapedSpec}%")
+                    ->orWhere('qualifications', 'like', "%{$escapedSpec}%");
+            });
+        }
+
+        if ($experience !== null && $experience !== '') {
+            $query->where('years_of_experience', '>=', (int) $experience);
+        }
+
         $vets = $query->orderByDesc('created_at')->paginate($perPage);
 
+        $vetItems = collect($vets->items())->map(function (VetProfile $vet) {
+            $completion = $this->vetProfileCompletionService->buildCompletionPayload($vet);
+
+            return array_merge($vet->toArray(), [
+                'profile_completion_percentage' => $completion['completion_percentage'],
+                'profile_missing_fields' => $completion['missing_fields'],
+            ]);
+        })->values()->all();
+
         return $this->success('Vets retrieved successfully', [
-            'vets' => $vets->items(),
+            'vets' => $vetItems,
+            'counts' => [
+                'pending' => VetProfile::byStatus('pending')->count(),
+                'approved' => VetProfile::byStatus('approved')->count(),
+                'rejected' => VetProfile::byStatus('rejected')->count(),
+                'suspended' => VetProfile::byStatus('suspended')->count(),
+            ],
             'pagination' => [
                 'current_page' => $vets->currentPage(),
                 'last_page'    => $vets->lastPage(),
@@ -361,7 +410,7 @@ class AdminController extends Controller
     {
         $vetProfile = VetProfile::where('uuid', $uuid)
             ->with([
-                'user:id,name,email,phone,created_at',
+                'user:id,name,email,phone,created_at,last_login_at',
                 'verifications' => function ($q) {
                     $q->with('admin:id,name')->orderByDesc('created_at');
                 },
@@ -373,20 +422,138 @@ class AdminController extends Controller
             return $this->notFound('Vet profile not found');
         }
 
-        // Build document URLs if documents exist
         $documents = [];
-        if ($vetProfile->license_document_url) {
-            $documents[] = [
-                'type' => 'license',
-                'path' => $vetProfile->license_document_url,
-                'url'  => asset('storage/' . $vetProfile->license_document_url),
-            ];
+        $documentFields = [
+            'license' => $vetProfile->license_document_url,
+            'degree_certificate' => $vetProfile->degree_certificate_url,
+            'government_id' => $vetProfile->government_id_url,
+        ];
+        foreach ($documentFields as $type => $path) {
+            if ($path) {
+                $documents[] = [
+                    'type' => $type,
+                    'path' => $path,
+                    'url' => str_starts_with($path, 'http') ? $path : asset('storage/' . ltrim($path, '/')),
+                ];
+            }
         }
+
+        $appointmentsTotal = $vetProfile->appointments()->count();
+        $consultationsTotal = $vetProfile->appointments()->where('status', 'completed')->count();
+        $appointmentsToday = $vetProfile->appointments()->whereDate('scheduled_at', today())->count();
+        $sosResponses = $vetProfile->sosRequests()->count();
+        $sosCompleted = $vetProfile->sosRequests()->whereIn('status', ['completed', 'sos_completed'])->count();
+        $revenueGenerated = (int) $vetProfile->payments()->paid()->sum('vet_payout_amount');
+
+        $center = $this->majorCityCenterForState($vetProfile->state);
+        $distanceFromCityCenter = null;
+        if ($center && $vetProfile->latitude !== null && $vetProfile->longitude !== null) {
+            $distanceFromCityCenter = round($this->haversineDistanceKm(
+                (float) $center['lat'],
+                (float) $center['lng'],
+                (float) $vetProfile->latitude,
+                (float) $vetProfile->longitude
+            ), 2);
+        }
+
+        $completion = $this->vetProfileCompletionService->buildCompletionPayload($vetProfile);
 
         return $this->success('Vet profile retrieved successfully', [
             'vet_profile' => $vetProfile,
+            'profile_completion_percentage' => $completion['completion_percentage'],
+            'profile_missing_fields' => $completion['missing_fields'],
             'documents'   => $documents,
+            'inspection' => [
+                'vet_status' => $vetProfile->vet_status,
+                'verification_status' => $vetProfile->verification_status ?? $vetProfile->vet_status,
+                'last_login' => $vetProfile->user?->last_login_at,
+                'account_created_at' => $vetProfile->user?->created_at,
+                'profile_updated_at' => $vetProfile->updated_at,
+                'location' => [
+                    'address' => $vetProfile->address,
+                    'city' => $vetProfile->city,
+                    'state' => $vetProfile->state,
+                    'latitude' => $vetProfile->latitude,
+                    'longitude' => $vetProfile->longitude,
+                    'major_city_center' => $center,
+                    'distance_from_city_center_km' => $distanceFromCityCenter,
+                    'map_url' => ($vetProfile->latitude !== null && $vetProfile->longitude !== null)
+                        ? 'https://maps.google.com/?q=' . $vetProfile->latitude . ',' . $vetProfile->longitude
+                        : null,
+                ],
+                'stats' => [
+                    'appointments_total' => $appointmentsTotal,
+                    'appointments_today' => $appointmentsToday,
+                    'total_consultations' => $consultationsTotal,
+                    'ratings_average' => $vetProfile->avg_rating,
+                    'ratings_count' => $vetProfile->total_reviews,
+                    'sos_responses' => $sosResponses,
+                    'sos_completed' => $sosCompleted,
+                    'revenue_generated' => $revenueGenerated,
+                ],
+                'profile_completion_percentage' => $completion['completion_percentage'],
+                'missing_fields' => $completion['missing_fields'],
+            ],
         ]);
+    }
+
+    /**
+     * Request additional information from a vet profile under review.
+     */
+    public function requestMoreInfo(Request $request, string $uuid): JsonResponse
+    {
+        $request->validate([
+            'reason' => 'required|string|max:1000',
+        ]);
+
+        $vetProfile = VetProfile::where('uuid', $uuid)->first();
+        if (!$vetProfile) {
+            return $this->notFound('Vet profile not found');
+        }
+
+        try {
+            $vetProfile = $this->vetOnboardingService->requestMoreInfo(
+                $vetProfile,
+                $request->user(),
+                $request->reason
+            );
+        } catch (\DomainException $e) {
+            return $this->error($e->getMessage(), [], 409);
+        }
+
+        return $this->success('More information requested from vet', ['vet_profile' => $vetProfile]);
+    }
+
+    private function majorCityCenterForState(?string $state): ?array
+    {
+        if (!$state) {
+            return null;
+        }
+
+        $map = [
+            'NY' => ['name' => 'New York City', 'lat' => 40.7128, 'lng' => -74.0060],
+            'CA' => ['name' => 'Los Angeles', 'lat' => 34.0522, 'lng' => -118.2437],
+            'Maharashtra' => ['name' => 'Mumbai', 'lat' => 19.0760, 'lng' => 72.8777],
+            'Delhi' => ['name' => 'New Delhi', 'lat' => 28.6139, 'lng' => 77.2090],
+            'Karnataka' => ['name' => 'Bengaluru', 'lat' => 12.9716, 'lng' => 77.5946],
+        ];
+
+        return $map[$state] ?? null;
+    }
+
+    private function haversineDistanceKm(float $lat1, float $lng1, float $lat2, float $lng2): float
+    {
+        $earthRadius = 6371;
+        $latDiff = deg2rad($lat2 - $lat1);
+        $lngDiff = deg2rad($lng2 - $lng1);
+
+        $a = sin($latDiff / 2) * sin($latDiff / 2)
+            + cos(deg2rad($lat1)) * cos(deg2rad($lat2))
+            * sin($lngDiff / 2) * sin($lngDiff / 2);
+
+        $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
+
+        return $earthRadius * $c;
     }
 
     /**
@@ -664,5 +831,398 @@ class AdminController extends Controller
             'entity' => $request->entity ?? 'vets',
             'data'   => $data,
         ]);
+    }
+
+    // ─── Revenue & Payments ──────────────────────────────────────────
+
+    /**
+     * Get revenue stats.
+     *
+     * GET /api/v1/admin/revenue
+     */
+    public function revenue(Request $request): JsonResponse
+    {
+        $stats = $this->paymentService->getRevenueStats();
+
+        return $this->success('Revenue stats retrieved', ['revenue' => $stats]);
+    }
+
+    /**
+     * Get pending vet payouts.
+     *
+     * GET /api/v1/admin/payouts/pending
+     */
+    public function pendingPayouts(): JsonResponse
+    {
+        $payouts = $this->paymentService->getPendingPayouts();
+
+        return $this->success('Pending payouts retrieved', ['payouts' => $payouts]);
+    }
+
+    /**
+     * List all payments with filters.
+     *
+     * GET /api/v1/admin/payments
+     */
+    public function payments(Request $request): JsonResponse
+    {
+        $perPage = min((int) ($request->per_page ?? 20), 100);
+
+        $query = \App\Models\Payment::with([
+            'user:id,name,email',
+            'vetProfile:id,uuid,clinic_name,vet_name',
+        ]);
+
+        if ($request->filled('status')) {
+            $query->where('payment_status', $request->status);
+        }
+
+        if ($request->filled('payment_model')) {
+            $query->where('payment_model', $request->payment_model);
+        }
+
+        if ($request->filled('from_date')) {
+            $query->where('created_at', '>=', $request->from_date);
+        }
+
+        if ($request->filled('to_date')) {
+            $query->where('created_at', '<=', $request->to_date);
+        }
+
+        $payments = $query->orderByDesc('created_at')->paginate($perPage);
+
+        return $this->success('Payments retrieved successfully', [
+            'payments' => $payments->items(),
+            'pagination' => [
+                'current_page' => $payments->currentPage(),
+                'last_page'    => $payments->lastPage(),
+                'per_page'     => $payments->perPage(),
+                'total'        => $payments->total(),
+            ],
+        ]);
+    }
+
+    // ─── Audit Logs ──────────────────────────────────────────────────
+
+    /**
+     * List audit logs with filters.
+     *
+     * GET /api/v1/admin/audit-logs
+     */
+    public function auditLogs(Request $request): JsonResponse
+    {
+        $perPage = min((int) ($request->per_page ?? 20), 100);
+
+        $query = \App\Models\AuditLog::with(['user:id,name,email']);
+
+        if ($request->filled('action')) {
+            $query->where('action', $request->action);
+        }
+
+        if ($request->filled('auditable_type')) {
+            $query->where('auditable_type', $request->auditable_type);
+        }
+
+        if ($request->filled('user_id')) {
+            $query->where('user_id', $request->user_id);
+        }
+
+        $logs = $query->orderByDesc('created_at')->paginate($perPage);
+
+        return $this->success('Audit logs retrieved', [
+            'audit_logs' => $logs->items(),
+            'pagination' => [
+                'current_page' => $logs->currentPage(),
+                'last_page'    => $logs->lastPage(),
+                'per_page'     => $logs->perPage(),
+                'total'        => $logs->total(),
+            ],
+        ]);
+    }
+
+    // ─── Ad Banners ──────────────────────────────────────────────────
+
+    /**
+     * List all ad banners.
+     * GET /api/v1/admin/ad-banners
+     */
+    public function adBanners(Request $request): JsonResponse
+    {
+        $perPage = min((int) ($request->per_page ?? 20), 100);
+        $query = \App\Models\AdBanner::query();
+
+        if ($request->filled('position')) {
+            $query->forPosition($request->position);
+        }
+
+        if ($request->boolean('active_only')) {
+            $query->active();
+        }
+
+        $banners = $query->orderByDesc('created_at')->paginate($perPage);
+
+        return $this->success('Ad banners retrieved', [
+            'ad_banners' => $banners->items(),
+            'pagination' => [
+                'current_page' => $banners->currentPage(),
+                'last_page'    => $banners->lastPage(),
+                'per_page'     => $banners->perPage(),
+                'total'        => $banners->total(),
+            ],
+        ]);
+    }
+
+    /**
+     * Create an ad banner.
+     * POST /api/v1/admin/ad-banners
+     */
+    public function storeAdBanner(Request $request): JsonResponse
+    {
+        $request->validate([
+            'title'      => 'required|string|max:255',
+            'image_url'  => 'required|string|max:500',
+            'link_url'   => 'nullable|string|max:500',
+            'position'   => 'required|in:home_top,home_bottom,search_results,vet_profile',
+            'priority'   => 'nullable|integer|min:0|max:100',
+            'starts_at'  => 'nullable|date',
+            'expires_at' => 'nullable|date|after:starts_at',
+        ]);
+
+        $banner = \App\Models\AdBanner::create($request->only([
+            'title', 'image_url', 'link_url', 'position', 'priority', 'starts_at', 'expires_at',
+        ]));
+
+        return $this->created('Ad banner created', ['ad_banner' => $banner]);
+    }
+
+    /**
+     * Update an ad banner.
+     * PUT /api/v1/admin/ad-banners/{uuid}
+     */
+    public function updateAdBanner(Request $request, string $uuid): JsonResponse
+    {
+        $banner = \App\Models\AdBanner::where('uuid', $uuid)->first();
+
+        if (!$banner) {
+            return $this->notFound('Ad banner not found');
+        }
+
+        $request->validate([
+            'title'      => 'sometimes|string|max:255',
+            'image_url'  => 'sometimes|string|max:500',
+            'link_url'   => 'nullable|string|max:500',
+            'position'   => 'sometimes|in:home_top,home_bottom,search_results,vet_profile',
+            'priority'   => 'nullable|integer|min:0|max:100',
+            'is_active'  => 'sometimes|boolean',
+            'starts_at'  => 'nullable|date',
+            'ends_at'    => 'nullable|date',
+        ]);
+
+        $banner->update($request->only([
+            'title', 'image_url', 'link_url', 'position', 'priority', 'is_active', 'starts_at', 'ends_at',
+        ]));
+
+        return $this->success('Ad banner updated', ['ad_banner' => $banner]);
+    }
+
+    /**
+     * Delete an ad banner.
+     * DELETE /api/v1/admin/ad-banners/{uuid}
+     */
+    public function destroyAdBanner(string $uuid): JsonResponse
+    {
+        $banner = \App\Models\AdBanner::where('uuid', $uuid)->first();
+
+        if (!$banner) {
+            return $this->notFound('Ad banner not found');
+        }
+
+        $banner->delete();
+
+        return $this->success('Ad banner deleted');
+    }
+
+    // ─── Subscriptions ───────────────────────────────────────────────
+
+    /**
+     * List subscription plans.
+     * GET /api/v1/admin/subscription-plans
+     */
+    public function subscriptionPlans(): JsonResponse
+    {
+        $plans = \App\Models\SubscriptionPlan::where('is_active', true)->orderBy('price')->get();
+
+        return $this->success('Subscription plans retrieved', ['plans' => $plans]);
+    }
+
+    /**
+     * Create a subscription plan.
+     * POST /api/v1/admin/subscription-plans
+     */
+    public function storeSubscriptionPlan(Request $request): JsonResponse
+    {
+        $request->validate([
+            'name'          => 'required|string|max:255',
+            'type'          => 'required|in:user,vet',
+            'price'         => 'required|numeric|min:0',
+            'duration_days' => 'required|integer|min:1',
+            'features'      => 'nullable|array',
+            'description'   => 'nullable|string|max:1000',
+        ]);
+
+        $plan = \App\Models\SubscriptionPlan::create($request->only([
+            'name', 'type', 'price', 'duration_days', 'features', 'description',
+        ]));
+
+        return $this->created('Plan created', ['plan' => $plan]);
+    }
+
+    /**
+     * Update a subscription plan.
+     * PUT /api/v1/admin/subscription-plans/{id}
+     */
+    public function updateSubscriptionPlan(Request $request, int $id): JsonResponse
+    {
+        $plan = \App\Models\SubscriptionPlan::find($id);
+
+        if (!$plan) {
+            return $this->notFound('Subscription plan not found');
+        }
+
+        $request->validate([
+            'name'          => 'sometimes|string|max:255',
+            'type'          => 'sometimes|in:user,vet',
+            'price'         => 'sometimes|numeric|min:0',
+            'duration_days' => 'sometimes|integer|min:1',
+            'features'      => 'nullable|array',
+            'description'   => 'nullable|string|max:1000',
+            'is_active'     => 'sometimes|boolean',
+        ]);
+
+        $plan->update($request->only([
+            'name', 'type', 'price', 'duration_days', 'features', 'description', 'is_active',
+        ]));
+
+        return $this->success('Plan updated', ['plan' => $plan]);
+    }
+
+    /**
+     * Delete a subscription plan.
+     * DELETE /api/v1/admin/subscription-plans/{id}
+     */
+    public function destroySubscriptionPlan(int $id): JsonResponse
+    {
+        $plan = \App\Models\SubscriptionPlan::find($id);
+
+        if (!$plan) {
+            return $this->notFound('Subscription plan not found');
+        }
+
+        $plan->update(['is_active' => false]);
+
+        return $this->success('Subscription plan deactivated');
+    }
+
+    // ─── Reviews ─────────────────────────────────────────────────────
+
+    /**
+     * List flagged reviews.
+     * GET /api/v1/admin/reviews/flagged
+     */
+    public function flaggedReviews(Request $request): JsonResponse
+    {
+        $perPage = min((int) ($request->per_page ?? 20), 100);
+
+        $reviews = \App\Models\Review::where('is_flagged', true)
+            ->with(['user:id,name', 'vetProfile:id,uuid,vet_name,clinic_name', 'appointment:id,uuid'])
+            ->orderByDesc('created_at')
+            ->paginate($perPage);
+
+        return $this->success('Flagged reviews retrieved', [
+            'reviews' => $reviews->items(),
+            'pagination' => [
+                'current_page' => $reviews->currentPage(),
+                'last_page'    => $reviews->lastPage(),
+                'per_page'     => $reviews->perPage(),
+                'total'        => $reviews->total(),
+            ],
+        ]);
+    }
+
+    /**
+     * Resolve a flagged review (unflag and keep).
+     * PUT /api/v1/admin/reviews/{uuid}/resolve
+     */
+    public function resolveReview(string $uuid): JsonResponse
+    {
+        $review = \App\Models\Review::where('uuid', $uuid)->first();
+
+        if (!$review) {
+            return $this->notFound('Review not found');
+        }
+
+        if (!$review->is_flagged) {
+            return $this->error('Review is not flagged', null, 422);
+        }
+
+        $review->update([
+            'is_flagged'  => false,
+            'flag_reason' => null,
+        ]);
+
+        return $this->success('Review resolved (unflagged)', ['review' => $review]);
+    }
+
+    /**
+     * Dismiss a flagged review (unflag with admin note).
+     * PUT /api/v1/admin/reviews/{uuid}/dismiss
+     */
+    public function dismissReview(Request $request, string $uuid): JsonResponse
+    {
+        $review = \App\Models\Review::where('uuid', $uuid)->first();
+
+        if (!$review) {
+            return $this->notFound('Review not found');
+        }
+
+        if (!$review->is_flagged) {
+            return $this->error('Review is not flagged', null, 422);
+        }
+
+        $review->update([
+            'is_flagged'  => false,
+            'flag_reason' => null,
+        ]);
+
+        return $this->success('Review flag dismissed', ['review' => $review]);
+    }
+
+    /**
+     * Delete a flagged review (soft-delete).
+     * DELETE /api/v1/admin/reviews/{uuid}
+     */
+    public function destroyReview(string $uuid): JsonResponse
+    {
+        $review = \App\Models\Review::where('uuid', $uuid)->first();
+
+        if (!$review) {
+            return $this->notFound('Review not found');
+        }
+
+        $vetProfileId = $review->vet_profile_id;
+        $review->delete();
+
+        // Recalculate vet rating after deletion
+        $remaining = \App\Models\Review::where('vet_profile_id', $vetProfileId)
+            ->whereNull('deleted_at')
+            ->selectRaw('AVG(rating) as avg_rating, COUNT(*) as total_reviews')
+            ->first();
+
+        \App\Models\VetProfile::where('id', $vetProfileId)->update([
+            'avg_rating'    => $remaining->avg_rating ?? 0,
+            'total_reviews' => $remaining->total_reviews ?? 0,
+        ]);
+
+        return $this->success('Review deleted');
     }
 }

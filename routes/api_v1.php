@@ -8,10 +8,13 @@ use App\Http\Controllers\Api\V1\CommunityController;
 use App\Http\Controllers\Api\V1\GuideController;
 use App\Http\Controllers\Api\V1\IncidentController;
 use App\Http\Controllers\Api\V1\NotificationController;
+use App\Http\Controllers\Api\V1\PaymentController;
 use App\Http\Controllers\Api\V1\PetController;
+use App\Http\Controllers\Api\V1\ReviewController;
 use App\Http\Controllers\Api\V1\SosController;
 use App\Http\Controllers\Api\V1\VetController;
 use App\Http\Controllers\Api\V1\VetOnboardingController;
+use App\Http\Controllers\Api\V1\VisitRecordController;
 use Illuminate\Support\Facades\Route;
 
 // ─── Auth ───────────────────────────────────────────────────────────
@@ -37,11 +40,12 @@ Route::prefix('auth')->group(function () {
             ->middleware('throttle:3,1');
         Route::put('change-password', [AuthController::class, 'changePassword']);
         Route::put('profile', [AuthController::class, 'updateProfile']);
+        Route::delete('account', [AuthController::class, 'deleteAccount']);
     });
 });
 
 // ─── Vet Registration & Application ─────────────────────────────────
-Route::middleware('throttle:3,1')->group(function () {
+Route::middleware('throttle:3,10')->group(function () {
     Route::post('vet/apply', [VetOnboardingController::class, 'apply']);
     Route::post('vet/register', [VetOnboardingController::class, 'register']);
 });
@@ -52,6 +56,30 @@ Route::get('guides', [GuideController::class, 'index']);
 Route::get('guides/{id}', [GuideController::class, 'show']);
 Route::get('vets', [VetController::class, 'index']);
 Route::get('vets/{uuid}', [VetController::class, 'show']);
+
+// ─── Public: Reviews ────────────────────────────────────────────────
+Route::get('reviews/vet/{uuid}', [ReviewController::class, 'forVet']);
+
+// ─── Public: Subscription Plans ─────────────────────────────────────
+Route::get('subscription-plans', function () {
+    return response()->json([
+        'success' => true,
+        'message' => 'Subscription plans retrieved',
+        'data' => ['plans' => \App\Models\SubscriptionPlan::where('is_active', true)->orderBy('price')->get()],
+    ]);
+});
+
+// ─── Public: Active Ad Banners ──────────────────────────────────────
+Route::get('ad-banners', function (\Illuminate\Http\Request $request) {
+    $position = $request->query('position');
+    $query = \App\Models\AdBanner::active();
+    if ($position) $query->forPosition($position);
+    return response()->json([
+        'success' => true,
+        'message' => 'Ad banners retrieved',
+        'data' => ['ad_banners' => $query->orderByDesc('priority')->get()],
+    ]);
+});
 
 // ─── Public: Blog ───────────────────────────────────────────────────
 Route::prefix('blog')->group(function () {
@@ -79,6 +107,7 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::post('/', [SosController::class, 'store']);
         Route::get('/active', [SosController::class, 'active']);
         Route::put('/{uuid}/status', [SosController::class, 'updateStatus']);
+        Route::put('/{uuid}/location', [SosController::class, 'updateLocation']);
     });
 
     // Incidents (user-scoped via controller)
@@ -90,8 +119,38 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::get('/', [AppointmentController::class, 'index']);
         Route::post('/', [AppointmentController::class, 'store']);
         Route::get('/slots/{vet_uuid}', [AppointmentController::class, 'availableSlots']);
+        Route::get('/vet', [AppointmentController::class, 'vetIndex'])->middleware('role:vet');
         Route::get('/{uuid}', [AppointmentController::class, 'show']);
         Route::put('/{uuid}/status', [AppointmentController::class, 'updateStatus']);
+        Route::put('/{uuid}/end-visit', [AppointmentController::class, 'endVisit']);
+    });
+
+    // Payments
+    Route::prefix('payments')->group(function () {
+        Route::get('/', [PaymentController::class, 'index']);
+        Route::post('/create-order', [PaymentController::class, 'createOrder']);
+        Route::post('/verify', [PaymentController::class, 'verify']);
+        Route::post('/offline', [PaymentController::class, 'recordOffline']);
+        Route::get('/wallet', [PaymentController::class, 'wallet']);
+        Route::get('/{uuid}', [PaymentController::class, 'show']);
+        Route::post('/{uuid}/refund', [PaymentController::class, 'refund']);
+    });
+
+    // Reviews
+    Route::prefix('reviews')->group(function () {
+        Route::post('/', [ReviewController::class, 'store']);
+        Route::put('/{uuid}/reply', [ReviewController::class, 'reply']);
+        Route::put('/{uuid}/flag', [ReviewController::class, 'flag']);
+    });
+
+    // Visit Records
+    Route::prefix('visit-records')->group(function () {
+        Route::post('/', [VisitRecordController::class, 'store']);
+        Route::put('/{uuid}', [VisitRecordController::class, 'update']);
+        Route::post('/{uuid}/prescription', [VisitRecordController::class, 'uploadPrescription']);
+        Route::post('/{uuid}/images', [VisitRecordController::class, 'uploadImages']);
+        Route::get('/appointment/{uuid}', [VisitRecordController::class, 'forAppointment']);
+        Route::get('/sos/{uuid}', [VisitRecordController::class, 'forSos']);
     });
 
     // Notifications
@@ -128,8 +187,14 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
 // ─── Vet-only routes (require vet role) ─────────────────────────────
 Route::middleware(['auth:sanctum', 'verified', 'role:vet'])->group(function () {
     Route::get('vet/profile', [VetOnboardingController::class, 'profile']);
+    Route::put('vet/profile', [VetOnboardingController::class, 'updateProfile']);
+    Route::post('vet/profile', [VetOnboardingController::class, 'updateProfile']);
     Route::post('vet/documents', [VetOnboardingController::class, 'uploadDocument']);
-    Route::get('appointments/vet', [AppointmentController::class, 'vetIndex']);
+    Route::put('vet/status', [VetOnboardingController::class, 'updateStatus']);
+    Route::get('vet/availabilities', [VetOnboardingController::class, 'availabilities']);
+    Route::post('vet/availabilities', [VetOnboardingController::class, 'storeAvailability']);
+    Route::put('vet/availabilities/{id}', [VetOnboardingController::class, 'updateAvailability']);
+    Route::delete('vet/availabilities/{id}', [VetOnboardingController::class, 'destroyAvailability']);
 });
 
 // ─── Admin ──────────────────────────────────────────────────────────
@@ -153,10 +218,16 @@ Route::middleware(['auth:sanctum', 'verified', 'role:admin'])->prefix('admin')->
     Route::get('vets/{uuid}', [AdminController::class, 'showVet']);
     Route::get('vets/{uuid}/review', [AdminController::class, 'reviewVet']);
     Route::put('vets/{uuid}/approve', [AdminController::class, 'approveVet']);
+    Route::patch('vets/{uuid}/approve', [AdminController::class, 'approveVet']);
     Route::put('vets/{uuid}/reject', [AdminController::class, 'rejectVet']);
+    Route::patch('vets/{uuid}/reject', [AdminController::class, 'rejectVet']);
     Route::put('vets/{uuid}/verify', [AdminController::class, 'verifyVet']);
     Route::put('vets/{uuid}/suspend', [AdminController::class, 'suspendVet']);
+    Route::patch('vets/{uuid}/suspend', [AdminController::class, 'suspendVet']);
     Route::put('vets/{uuid}/reactivate', [AdminController::class, 'reactivateVet']);
+    Route::patch('vets/{uuid}/reactivate', [AdminController::class, 'reactivateVet']);
+    Route::put('vets/{uuid}/request-info', [AdminController::class, 'requestMoreInfo']);
+    Route::patch('vets/{uuid}/request-info', [AdminController::class, 'requestMoreInfo']);
     Route::get('vets/{uuid}/history', [AdminController::class, 'vetVerificationHistory']);
 
     // Admin Metrics
@@ -164,6 +235,32 @@ Route::middleware(['auth:sanctum', 'verified', 'role:admin'])->prefix('admin')->
     Route::get('metrics/time-series', [AdminController::class, 'timeSeries']);
     Route::get('metrics/geo', [AdminController::class, 'geoDistribution']);
     Route::get('recent-activity', [AdminController::class, 'recentActivity']);
+
+    // Revenue & Payments
+    Route::get('revenue', [AdminController::class, 'revenue']);
+    Route::get('payments', [AdminController::class, 'payments']);
+    Route::get('payouts/pending', [AdminController::class, 'pendingPayouts']);
+
+    // Audit Logs
+    Route::get('audit-logs', [AdminController::class, 'auditLogs']);
+
+    // Ad Banners
+    Route::get('ad-banners', [AdminController::class, 'adBanners']);
+    Route::post('ad-banners', [AdminController::class, 'storeAdBanner']);
+    Route::put('ad-banners/{uuid}', [AdminController::class, 'updateAdBanner']);
+    Route::delete('ad-banners/{uuid}', [AdminController::class, 'destroyAdBanner']);
+
+    // Subscription Plans
+    Route::get('subscription-plans', [AdminController::class, 'subscriptionPlans']);
+    Route::post('subscription-plans', [AdminController::class, 'storeSubscriptionPlan']);
+    Route::put('subscription-plans/{id}', [AdminController::class, 'updateSubscriptionPlan']);
+    Route::delete('subscription-plans/{id}', [AdminController::class, 'destroySubscriptionPlan']);
+
+    // Reviews
+    Route::get('reviews/flagged', [AdminController::class, 'flaggedReviews']);
+    Route::put('reviews/{uuid}/resolve', [AdminController::class, 'resolveReview']);
+    Route::put('reviews/{uuid}/dismiss', [AdminController::class, 'dismissReview']);
+    Route::delete('reviews/{uuid}', [AdminController::class, 'destroyReview']);
 
     // Blog Admin
     Route::prefix('blog')->group(function () {
@@ -200,6 +297,19 @@ Route::middleware(['auth:sanctum', 'verified', 'role:admin'])->prefix('admin')->
 
         Route::get('reports', [CommunityController::class, 'reports']);
         Route::put('reports/{uuid}', [CommunityController::class, 'reviewReport']);
+    });
+
+    // Emergency Guides Admin
+    Route::prefix('guides')->group(function () {
+        Route::get('categories', [GuideController::class, 'adminCategories']);
+        Route::post('categories', [GuideController::class, 'storeCategory']);
+        Route::put('categories/{id}', [GuideController::class, 'updateCategory']);
+        Route::delete('categories/{id}', [GuideController::class, 'destroyCategory']);
+
+        Route::get('/', [GuideController::class, 'adminIndex']);
+        Route::post('/', [GuideController::class, 'storeGuide']);
+        Route::put('{id}', [GuideController::class, 'updateGuide']);
+        Route::delete('{id}', [GuideController::class, 'destroyGuide']);
     });
 });
 

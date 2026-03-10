@@ -15,12 +15,18 @@ class StoreAppointmentRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'vet_uuid'         => ['required', 'string', 'exists:vet_profiles,uuid'],
-            'pet_id'           => ['nullable', 'integer', Rule::exists('pets', 'id')->where('user_id', $this->user()->id)],
-            'scheduled_at'     => ['required', 'date', 'after:now'],
-            'duration_minutes' => ['nullable', 'integer', 'min:15', 'max:120'],
-            'reason'           => ['required', 'string', 'min:5', 'max:1000'],
-            'notes'            => ['nullable', 'string', 'max:2000'],
+            'vet_uuid'           => ['required', 'string', 'exists:vet_profiles,uuid'],
+            'pet_id'             => ['required', 'integer', Rule::exists('pets', 'id')->where('user_id', $this->user()->id)],
+            'scheduled_at'       => ['required', 'date', 'after:now'],
+            'duration_minutes'   => ['nullable', 'integer', 'min:15', 'max:120'],
+            'reason'             => ['required', 'string', 'min:5', 'max:1000'],
+            'notes'              => ['nullable', 'string', 'max:2000'],
+            'appointment_type'   => ['nullable', Rule::in(['online', 'clinic_visit', 'home_visit'])],
+            'is_emergency'       => ['nullable', 'boolean'],
+            'photo_url'          => ['nullable', 'string', 'max:500'],
+            'home_address'       => ['required_if:appointment_type,home_visit', 'nullable', 'string', 'max:500'],
+            'home_latitude'      => ['required_if:appointment_type,home_visit', 'nullable', 'numeric', 'between:-90,90'],
+            'home_longitude'     => ['required_if:appointment_type,home_visit', 'nullable', 'numeric', 'between:-180,180'],
         ];
     }
 

@@ -7,6 +7,7 @@ use App\Models\Appointment;
 use App\Models\BlogPost;
 use App\Models\CommunityPost;
 use App\Models\IncidentLog;
+use App\Models\Payment;
 use App\Models\Pet;
 use App\Models\SosRequest;
 use App\Models\User;
@@ -21,6 +22,9 @@ class AdminMetricsService implements AdminMetrics
     public function getDashboardSummary(): array
     {
         return [
+            'platform_revenue' => (int) Payment::paid()->sum('platform_fee'),
+            'gross_revenue' => (int) Payment::paid()->sum('amount'),
+
             // Users
             'total_users'         => User::count(),
             'users_by_role'       => User::query()

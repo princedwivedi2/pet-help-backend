@@ -94,6 +94,8 @@ class AuthController extends Controller
             $user->markEmailAsVerified();
         }
 
+        $user->forceFill(['last_login_at' => now()])->save();
+
         $token = $user->createToken('mobile-app')->plainTextToken;
 
         return $this->success('Login successful', [
@@ -255,5 +257,32 @@ class AuthController extends Controller
         return $this->success('Profile updated successfully', [
             'user' => $user->fresh(),
         ]);
+    }
+
+    /**
+     * Delete authenticated user's account.
+     * DELETE /api/v1/auth/account
+     */
+    public function deleteAccount(Request $request): JsonResponse
+    {
+        $request->validate([
+            'password' => 'required|string',
+        ]);
+
+        $user = $request->user();
+
+        if (!Hash::check($request->password, $user->password)) {
+            return $this->validationError('Password is incorrect', [
+                'password' => ['The provided password does not match.'],
+            ]);
+        }
+
+        // Revoke all tokens
+        $user->tokens()->delete();
+
+        // Delete the user account
+        $user->delete();
+
+        return $this->success('Account deleted successfully');
     }
 }

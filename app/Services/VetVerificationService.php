@@ -17,10 +17,22 @@ class VetVerificationService
     private const REQUIRED_PROFILE_FIELDS = [
         'vet_name'            => 'full_name',
         'phone'               => 'phone',
+        'profile_photo'       => 'profile_photo',
         'clinic_name'         => 'clinic_name',
         'address'             => 'clinic_address',
+        'city'                => 'city',
+        'state'               => 'state',
+        'postal_code'         => 'postal_code',
+        'latitude'            => 'latitude',
+        'longitude'           => 'longitude',
         'qualifications'      => 'qualification',
+        'specialization'      => 'specialization',
         'years_of_experience' => 'experience',
+        'consultation_fee'    => 'consultation_fee',
+        'home_visit_fee'      => 'home_visit_fee',
+        'services'            => 'services_offered',
+        'accepted_species'    => 'accepted_species',
+        'working_hours'       => 'working_hours',
         'license_number'      => 'registration_number',
     ];
 
@@ -29,6 +41,8 @@ class VetVerificationService
      */
     private const REQUIRED_DOCUMENTS = [
         'license_proof' => 'license_document_url',
+        'degree_certificate' => 'degree_certificate_url',
+        'government_id' => 'government_id_url',
     ];
 
     /**
@@ -53,7 +67,11 @@ class VetVerificationService
         foreach (self::REQUIRED_PROFILE_FIELDS as $column => $displayName) {
             $value = $vetProfile->{$column};
 
-            if ($value === null || (is_string($value) && trim($value) === '')) {
+            if (
+                $value === null ||
+                (is_string($value) && trim($value) === '') ||
+                (is_array($value) && count($value) === 0)
+            ) {
                 $missing[] = $displayName;
             }
         }

@@ -90,7 +90,21 @@ class CommunityService
 
     public function deletePost(CommunityPost $post): bool
     {
-        return $post->delete();
+        return DB::transaction(function () use ($post) {
+            // Delete morph-related votes and reports (not cascade-aware on soft delete)
+            \App\Models\CommunityVote::where('votable_type', CommunityPost::class)->where('votable_id', $post->id)->delete();
+            \App\Models\CommunityReport::where('reportable_type', CommunityPost::class)->where('reportable_id', $post->id)->delete();
+
+            // Delete replies and their votes/reports
+            $replyIds = $post->replies()->pluck('id');
+            if ($replyIds->isNotEmpty()) {
+                \App\Models\CommunityVote::where('votable_type', \App\Models\CommunityReply::class)->whereIn('votable_id', $replyIds)->delete();
+                \App\Models\CommunityReport::where('reportable_type', \App\Models\CommunityReply::class)->whereIn('reportable_id', $replyIds)->delete();
+                $post->replies()->delete();
+            }
+
+            return $post->delete();
+        });
     }
 
     public function toggleLock(CommunityPost $post): CommunityPost

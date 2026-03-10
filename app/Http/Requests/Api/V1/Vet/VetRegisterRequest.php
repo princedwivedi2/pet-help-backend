@@ -2,9 +2,9 @@
 
 namespace App\Http\Requests\Api\V1\Vet;
 
-use Illuminate\Foundation\Http\FormRequest;
+use App\Http\Requests\Api\ApiFormRequest;
 
-class VetRegisterRequest extends FormRequest
+class VetRegisterRequest extends ApiFormRequest
 {
     public function authorize(): bool
     {
@@ -17,18 +17,26 @@ class VetRegisterRequest extends FormRequest
             'full_name'          => ['required', 'string', 'max:150'],
             'email'              => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
             'password'           => ['required', 'string', 'min:8', 'regex:/[A-Z]/', 'regex:/[0-9]/', 'confirmed'],
-            'phone_number'       => ['required', 'string', 'max:20', 'regex:/^[\+]?[0-9\s\-\(\)]{7,20}$/'],
+            'phone_number'       => ['required_without:phone', 'nullable', 'string', 'max:20', 'regex:/^[\+]?[0-9\s\-\(\)]{7,20}$/'],
+            'phone'              => ['required_without:phone_number', 'nullable', 'string', 'max:20', 'regex:/^[\+]?[0-9\s\-\(\)]{7,20}$/'],
+            'profile_photo'      => ['required', 'string', 'max:500'],
             'clinic_name'        => ['required', 'string', 'max:200'],
             'clinic_address'     => ['required', 'string', 'max:300'],
+            'city'               => ['required', 'string', 'max:100'],
             'latitude'           => ['required', 'numeric', 'between:-90,90'],
             'longitude'          => ['required', 'numeric', 'between:-180,180'],
             'qualifications'     => ['required', 'string', 'max:2000'],
+            'qualification'      => ['required', 'string', 'max:2000'],
             'license_number'     => ['required', 'string', 'max:100', 'unique:vet_profiles,license_number'],
             'years_of_experience'=> ['required', 'integer', 'min:0', 'max:60'],
+            'specialization'     => ['required', 'string', 'max:150'],
+            'consultation_fee'   => ['required', 'integer', 'min:0'],
+            'home_visit_fee'     => ['nullable', 'integer', 'min:0'],
             'accepted_species'   => ['required', 'array', 'min:1'],
             'accepted_species.*' => ['string', 'max:50'],
             'services_offered'   => ['required', 'array', 'min:1'],
             'services_offered.*' => ['string', 'max:100'],
+            'working_hours'      => ['required', 'array', 'min:1'],
         ];
     }
 
@@ -44,7 +52,25 @@ class VetRegisterRequest extends FormRequest
             'accepted_species.min'        => 'Please specify at least one accepted species.',
             'services_offered.min'        => 'Please specify at least one service offered.',
             'years_of_experience.max'     => 'Years of experience cannot exceed 60.',
+            'profile_photo.required'      => 'Profile photo is required.',
+            'qualification.required'      => 'Qualification is required.',
+            'working_hours.required'      => 'Working hours are required.',
         ];
+    }
+
+    protected function prepareForValidation(): void
+    {
+        if (!$this->filled('phone_number') && $this->filled('phone')) {
+            $this->merge(['phone_number' => $this->input('phone')]);
+        }
+
+        if (!$this->filled('qualifications') && $this->filled('qualification')) {
+            $this->merge(['qualifications' => $this->input('qualification')]);
+        }
+
+        if (!$this->filled('specialization') && $this->filled('qualifications')) {
+            $this->merge(['specialization' => $this->input('qualifications')]);
+        }
     }
 
 }

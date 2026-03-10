@@ -7,6 +7,7 @@ use App\Exceptions\VetDocumentException;
 use App\Models\User;
 use App\Models\VetProfile;
 use App\Models\VetVerification;
+use App\Notifications\VetApprovedNotification;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -28,15 +29,24 @@ class VetOnboardingService
      *
      * @param  array  $data   Validated form data
      * @param  array  $files  Uploaded document files (UploadedFile[])
+     * @param  UploadedFile|null  $profilePhoto  Optional profile photo upload
      * @return array  ['user', 'vet_profile', 'token', 'documents']
      */
-    public function apply(array $data, array $files = []): array
+    public function apply(array $data, array $files = [], ?UploadedFile $profilePhoto = null): array
     {
         // Store documents BEFORE the transaction so rollback doesn't leave orphaned files untracked
         $documentPaths = $this->storeDocuments($files);
 
+        // Store profile photo if uploaded
+        $profilePhotoPath = null;
+        if ($profilePhoto instanceof UploadedFile && $profilePhoto->isValid()) {
+            $ext = $profilePhoto->getClientOriginalExtension();
+            $filename = Str::uuid()->toString() . '.' . $ext;
+            $profilePhotoPath = $profilePhoto->storeAs('vet-photos', $filename, 'public');
+        }
+
         try {
-            $result = DB::transaction(function () use ($data, $documentPaths) {
+            $result = DB::transaction(function () use ($data, $documentPaths, $profilePhotoPath) {
                 // Create user — password is auto-hashed by User model cast
                 $user = User::create([
                     'name'     => $data['full_name'],
@@ -54,22 +64,32 @@ class VetOnboardingService
                     'user_id'                => $user->id,
                     'vet_name'               => $data['full_name'],
                     'clinic_name'            => $data['clinic_name'],
-                    'phone'                  => $data['phone_number'],
+                    'phone'                  => $data['phone_number'] ?? $data['phone'] ?? null,
                     'email'                  => $data['email'],
+                    'profile_photo'          => $profilePhotoPath ?? ($data['profile_photo'] ?? null),
                     'address'                => $data['clinic_address'],
+                    'city'                   => $data['city'] ?? null,
                     'state'                  => $data['state'] ?? null,
                     'postal_code'            => $data['postal_code'] ?? null,
                     'latitude'               => $data['latitude'],
                     'longitude'              => $data['longitude'],
-                    'qualifications'         => $data['qualifications'],
+                    'qualifications'         => $data['qualifications'] ?? $data['qualification'] ?? null,
+                    'specialization'         => $data['specialization'] ?? null,
                     'license_number'         => $data['license_number'],
                     'years_of_experience'    => $data['years_of_experience'],
+                    'consultation_fee'       => $data['consultation_fee'] ?? null,
+                    'home_visit_fee'         => $data['home_visit_fee'] ?? null,
                     'accepted_species'       => $data['accepted_species'],
                     'services'               => $data['services_offered'],
+                    'working_hours'          => $data['working_hours'] ?? null,
                     'license_document_url'   => $documentPaths[0] ?? null, // primary doc
+                    'degree_certificate_url' => $data['degree_certificate'] ?? null,
+                    'government_id_url'      => $data['government_id'] ?? null,
+                    'verification_documents' => $data['verification_documents'] ?? $documentPaths,
                     'is_emergency_available' => $data['is_emergency_available'] ?? false,
                     'is_24_hours'            => $data['is_24_hours'] ?? false,
                     'vet_status'             => 'pending',
+                    'verification_status'    => 'pending',
                     'is_active'              => true,
                 ]);
 
@@ -155,9 +175,21 @@ class VetOnboardingService
         $path      = $file->storeAs('vet-documents', $filename, 'public');
 
         try {
-            // Update the primary license document URL
-            if ($type === 'license') {
-                $vetProfile->update(['license_document_url' => $path]);
+            $fieldMap = [
+                'license' => 'license_document_url',
+                'degree' => 'degree_certificate_url',
+                'id_proof' => 'government_id_url',
+                'clinic_registration' => 'verification_documents',
+            ];
+
+            if (isset($fieldMap[$type])) {
+                if ($type === 'clinic_registration') {
+                    $existing = $vetProfile->verification_documents ?? [];
+                    $existing[] = $path;
+                    $vetProfile->update(['verification_documents' => $existing]);
+                } else {
+                    $vetProfile->update([$fieldMap[$type] => $path]);
+                }
             }
 
             Log::info('Vet document uploaded', [
@@ -252,6 +284,7 @@ class VetOnboardingService
             // All clear — approve
             $vetProfile->update([
                 'vet_status' => 'approved',
+                'verification_status' => 'approved',
             ]);
 
             // Create persistent verification record with snapshot
@@ -263,6 +296,9 @@ class VetOnboardingService
                 'vet_profile_id' => $vetProfile->id,
                 'admin_id'       => $admin->id,
             ]);
+
+            // Notify vet user about approval
+            $vetProfile->user?->notify(new VetApprovedNotification($vetProfile));
 
             return $vetProfile->fresh('user');
         });
@@ -282,6 +318,7 @@ class VetOnboardingService
 
             $vetProfile->update([
                 'vet_status' => 'rejected',
+                'verification_status' => 'rejected',
             ]);
 
             // Revoke all tokens — blocked vets must not retain API access
@@ -318,6 +355,7 @@ class VetOnboardingService
 
             $vetProfile->update([
                 'vet_status' => 'suspended',
+                'verification_status' => 'suspended',
                 'is_active'  => false,
             ]);
 
@@ -355,6 +393,7 @@ class VetOnboardingService
 
             $vetProfile->update([
                 'vet_status' => 'approved',
+                'verification_status' => 'approved',
                 'is_active'  => true,
             ]);
 
@@ -381,6 +420,35 @@ class VetOnboardingService
             ->with('admin:id,name,email')
             ->orderByDesc('created_at')
             ->get();
+    }
+
+    /**
+     * Mark a profile as pending additional information from admin review.
+     */
+    public function requestMoreInfo(VetProfile $vetProfile, User $admin, string $reason): VetProfile
+    {
+        return DB::transaction(function () use ($vetProfile, $admin, $reason) {
+            $vetProfile = VetProfile::where('id', $vetProfile->id)->lockForUpdate()->first();
+
+            if ($vetProfile->isSuspended()) {
+                throw new \DomainException('Suspended vets cannot be moved to request-info state.');
+            }
+
+            $vetProfile->update([
+                'vet_status' => 'pending',
+                'verification_status' => 'needs_information',
+                'is_active' => false,
+            ]);
+
+            $this->verificationService->createVerificationRecord(
+                $vetProfile,
+                $admin,
+                'request_more_info',
+                $reason
+            );
+
+            return $vetProfile->fresh('user');
+        });
     }
 
     /**
