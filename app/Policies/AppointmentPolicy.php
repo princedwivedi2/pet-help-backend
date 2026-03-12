@@ -42,6 +42,30 @@ class AppointmentPolicy
     }
 
     /**
+     * Accept: only the assigned vet.
+     */
+    public function accept(User $user, Appointment $appointment): bool
+    {
+        return $this->confirm($user, $appointment);
+    }
+
+    /**
+     * Reject: only the assigned vet.
+     */
+    public function reject(User $user, Appointment $appointment): bool
+    {
+        return $this->confirm($user, $appointment);
+    }
+
+    /**
+     * Start visit: only the assigned vet.
+     */
+    public function startVisit(User $user, Appointment $appointment): bool
+    {
+        return $this->complete($user, $appointment);
+    }
+
+    /**
      * Cancel: only the owner or the assigned vet.
      */
     public function cancel(User $user, Appointment $appointment): bool

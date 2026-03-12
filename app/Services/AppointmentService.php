@@ -13,6 +13,8 @@ use Illuminate\Support\Facades\Log;
 
 class AppointmentService
 {
+    private const USER_CANCELLATION_CUTOFF_HOURS = 2;
+
     /**
      * Valid appointment status transitions.
      */
@@ -107,7 +109,7 @@ class AppointmentService
                 report($e);
             }
 
-            return $appointment->load(['user:id,name', 'vetProfile:id,uuid,clinic_name,vet_name', 'pet:id,name,species']);
+            return $appointment->load(['user:id,name', 'vetProfile:id,user_id,uuid,clinic_name,vet_name', 'pet:id,name,species']);
         });
     }
 
@@ -165,6 +167,17 @@ class AppointmentService
      */
     public function cancel(Appointment $appointment, User $cancelledBy, string $reason): Appointment
     {
+        if (trim($reason) === '') {
+            throw new \DomainException('Cancellation reason is required.');
+        }
+
+        if ($cancelledBy->id === $appointment->user_id) {
+            $hoursUntilAppointment = now()->diffInHours($appointment->scheduled_at, false);
+            if ($hoursUntilAppointment < self::USER_CANCELLATION_CUTOFF_HOURS) {
+                throw new \DomainException('Appointments can only be cancelled at least 2 hours before scheduled time.');
+            }
+        }
+
         $isUserCancel = $cancelledBy->id === $appointment->user_id;
         $status = $isUserCancel ? 'cancelled_by_user' : ($cancelledBy->isVet() ? 'cancelled_by_vet' : 'cancelled');
 
@@ -274,7 +287,7 @@ class AppointmentService
                 report($e);
             }
 
-            return $appointment->fresh(['user:id,name', 'vetProfile:id,uuid,clinic_name,vet_name', 'pet:id,name,species']);
+            return $appointment->fresh(['user:id,name', 'vetProfile:id,user_id,uuid,clinic_name,vet_name', 'pet:id,name,species']);
         });
     }
 
@@ -287,10 +300,14 @@ class AppointmentService
         int $perPage = 15
     ): LengthAwarePaginator {
         $query = Appointment::forUser($user->id)
-            ->with(['vetProfile:id,uuid,clinic_name,vet_name,phone', 'pet:id,name,species']);
+            ->with(['vetProfile:id,user_id,uuid,clinic_name,vet_name,phone', 'pet:id,name,species']);
 
         if ($status) {
-            $query->byStatus($status);
+            if ($status === 'cancelled') {
+                $query->whereIn('status', ['cancelled', 'cancelled_by_user', 'cancelled_by_vet']);
+            } else {
+                $query->byStatus($status);
+            }
         }
 
         return $query->orderByDesc('scheduled_at')->paginate($perPage);
@@ -309,7 +326,11 @@ class AppointmentService
             ->with(['user:id,name,email,phone', 'pet:id,name,species']);
 
         if ($status) {
-            $query->byStatus($status);
+            if ($status === 'cancelled') {
+                $query->whereIn('status', ['cancelled', 'cancelled_by_user', 'cancelled_by_vet']);
+            } else {
+                $query->byStatus($status);
+            }
         }
 
         if ($date) {
@@ -325,7 +346,7 @@ class AppointmentService
     public function findByUuid(string $uuid): ?Appointment
     {
         return Appointment::where('uuid', $uuid)
-            ->with(['user:id,name', 'vetProfile:id,uuid,clinic_name,vet_name', 'pet:id,name,species'])
+            ->with(['user:id,name', 'vetProfile:id,user_id,uuid,clinic_name,vet_name', 'pet:id,name,species'])
             ->first();
     }
 
@@ -334,7 +355,7 @@ class AppointmentService
      */
     public function findByReference(string $reference): ?Appointment
     {
-        $query = Appointment::with(['user:id,name', 'vetProfile:id,uuid,clinic_name,vet_name', 'pet:id,name,species']);
+        $query = Appointment::with(['user:id,name', 'vetProfile:id,user_id,uuid,clinic_name,vet_name', 'pet:id,name,species']);
 
         if (is_numeric($reference)) {
             return $query->where('id', (int) $reference)

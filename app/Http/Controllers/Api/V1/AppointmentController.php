@@ -13,6 +13,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class AppointmentController extends Controller
 {
@@ -158,6 +159,10 @@ class AppointmentController extends Controller
      */
     public function updateStatus(UpdateAppointmentStatusRequest $request, string $uuid): JsonResponse
     {
+        if ($request->user()?->isAdmin()) {
+            return $this->forbidden('Admins can only view appointments. Status updates are restricted to users and assigned vets.');
+        }
+
         $appointment = $this->appointmentService->findByReference($uuid);
 
         if (!$appointment) {
@@ -188,11 +193,89 @@ class AppointmentController extends Controller
     }
 
     /**
+     * Accept a pending appointment (vet action).
+     * PATCH /api/v1/appointments/{uuid}/accept
+     */
+    public function accept(Request $request, string $uuid): JsonResponse
+    {
+        return $this->runLifecycleAction($request, $uuid, fn (Appointment $appointment) => $this->acceptAppointment($request, $appointment), 'Appointment accepted successfully');
+    }
+
+    /**
+     * Reject a pending appointment (vet action).
+     * PATCH /api/v1/appointments/{uuid}/reject
+     */
+    public function reject(Request $request, string $uuid): JsonResponse
+    {
+        $request->validate([
+            'reason' => ['required', 'string', 'max:1000'],
+        ]);
+
+        return $this->runLifecycleAction($request, $uuid, fn (Appointment $appointment) => $this->rejectAppointment($request, $appointment), 'Appointment rejected successfully');
+    }
+
+    /**
+     * Start a confirmed/accepted appointment visit (vet action).
+     * PATCH /api/v1/appointments/{uuid}/start
+     */
+    public function start(Request $request, string $uuid): JsonResponse
+    {
+        $request->validate([
+            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
+        ]);
+
+        return $this->runLifecycleAction($request, $uuid, fn (Appointment $appointment) => $this->startVisitAction($request, $appointment), 'Visit started successfully');
+    }
+
+    /**
+     * Complete an in-progress appointment (vet action).
+     * PATCH /api/v1/appointments/{uuid}/complete
+     */
+    public function complete(Request $request, string $uuid): JsonResponse
+    {
+        $request->validate([
+            'notes' => ['nullable', 'string', 'max:2000'],
+            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
+        ]);
+
+        return $this->runLifecycleAction(
+            $request,
+            $uuid,
+            fn (Appointment $appointment) => $this->appointmentService->endVisit(
+                $appointment,
+                $request->latitude ? (float) $request->latitude : null,
+                $request->longitude ? (float) $request->longitude : null,
+                $request->notes
+            ),
+            'Appointment completed successfully'
+        );
+    }
+
+    /**
+     * Cancel an appointment (user or assigned vet action).
+     * PATCH /api/v1/appointments/{uuid}/cancel
+     */
+    public function cancel(Request $request, string $uuid): JsonResponse
+    {
+        $request->validate([
+            'reason' => ['required', 'string', 'max:1000'],
+        ]);
+
+        return $this->runLifecycleAction($request, $uuid, fn (Appointment $appointment) => $this->cancelAppointment($request, $appointment), 'Appointment cancelled successfully');
+    }
+
+    /**
      * End a visit (separate endpoint for location verification).
      * PUT /api/v1/appointments/{uuid}/end-visit
      */
     public function endVisit(Request $request, string $uuid): JsonResponse
     {
+        if ($request->user()?->isAdmin()) {
+            return $this->forbidden('Admins can only view appointments. Visit actions are restricted to assigned vets.');
+        }
+
         $appointment = $this->appointmentService->findByReference($uuid);
 
         if (!$appointment) {
@@ -286,5 +369,32 @@ class AppointmentController extends Controller
             $request->latitude ? (float) $request->latitude : null,
             $request->longitude ? (float) $request->longitude : null
         );
+    }
+
+    private function runLifecycleAction(Request $request, string $uuid, callable $handler, string $message): JsonResponse
+    {
+        if ($request->user()?->isAdmin()) {
+            return $this->forbidden('Admins can only view appointments. Lifecycle actions are restricted to users and assigned vets.');
+        }
+
+        $appointment = $this->appointmentService->findByReference($uuid);
+        if (!$appointment) {
+            return $this->notFound('Appointment not found');
+        }
+
+        try {
+            $updated = $handler($appointment);
+
+            return $this->success($message, [
+                'appointment' => $updated,
+            ]);
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\DomainException $e) {
+            return $this->error($e->getMessage(), null, 422);
+        } catch (QueryException $e) {
+            report($e);
+            return $this->error('Unable to perform appointment action. Please try again.', null, 409);
+        }
     }
 }
