@@ -15,17 +15,22 @@ class UpdateAppointmentStatusRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'status' => ['required', Rule::in(['confirmed', 'completed', 'cancelled', 'no_show'])],
-            'reason' => ['required_if:status,cancelled', 'nullable', 'string', 'max:1000'],
-            'notes'  => ['nullable', 'string', 'max:2000'],
+            'status'    => ['required', Rule::in([
+                'confirmed', 'completed', 'cancelled', 'no_show',
+                'accepted', 'rejected', 'in_progress',
+            ])],
+            'reason'    => ['required_if:status,cancelled', 'required_if:status,rejected', 'nullable', 'string', 'max:1000'],
+            'notes'     => ['nullable', 'string', 'max:2000'],
+            'latitude'  => ['nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
         ];
     }
 
     public function messages(): array
     {
         return [
-            'status.in'             => 'Status must be one of: confirmed, completed, cancelled, no_show.',
-            'reason.required_if'    => 'A cancellation reason is required when cancelling an appointment.',
+            'status.in'          => 'Status must be one of: confirmed, completed, cancelled, no_show, accepted, rejected, in_progress.',
+            'reason.required_if' => 'A reason is required when cancelling or rejecting an appointment.',
         ];
     }
 }

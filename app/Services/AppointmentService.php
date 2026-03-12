@@ -14,6 +14,26 @@ use Illuminate\Support\Facades\Log;
 class AppointmentService
 {
     /**
+     * Valid appointment status transitions.
+     */
+    private const VALID_TRANSITIONS = [
+        'pending'          => ['accepted', 'rejected', 'cancelled_by_user', 'cancelled_by_vet', 'cancelled', 'confirmed'],
+        'accepted'         => ['confirmed', 'in_progress', 'cancelled_by_user', 'cancelled_by_vet', 'cancelled'],
+        'confirmed'        => ['in_progress', 'completed', 'cancelled_by_user', 'cancelled_by_vet', 'cancelled', 'no_show'],
+        'rejected'         => [],
+        'in_progress'      => ['completed', 'no_show'],
+        'completed'        => [],
+        'cancelled_by_user' => [],
+        'cancelled_by_vet' => [],
+        'cancelled'        => [],
+        'no_show'          => [],
+    ];
+
+    public function __construct(
+        private AuditService $auditService
+    ) {}
+
+    /**
      * Create a new appointment (with double-booking prevention).
      */
     public function create(User $user, VetProfile $vetProfile, array $data): Appointment
@@ -22,7 +42,7 @@ class AppointmentService
             // Lock the vet's appointments for the time slot to prevent race conditions
             $conflict = Appointment::where('vet_profile_id', $vetProfile->id)
                 ->where('scheduled_at', $data['scheduled_at'])
-                ->whereIn('status', ['pending', 'confirmed'])
+                ->whereIn('status', ['pending', 'accepted', 'confirmed', 'in_progress'])
                 ->lockForUpdate()
                 ->exists();
 
@@ -30,22 +50,54 @@ class AppointmentService
                 throw new \DomainException('This time slot is already booked.');
             }
 
+            // Validate home visit has address
+            $appointmentType = $data['appointment_type'] ?? 'clinic_visit';
+            if ($appointmentType === 'home_visit' && empty($data['home_address'])) {
+                throw new \DomainException('Home visit requires an address.');
+            }
+
+            // Validate pet is required
+            if (empty($data['pet_id'])) {
+                throw new \DomainException('A pet must be selected for the appointment.');
+            }
+
+            // Validate pet belongs to this user
+            if (!$user->pets()->where('id', $data['pet_id'])->exists()) {
+                throw new \DomainException('The selected pet does not belong to you.');
+            }
+
             $appointment = Appointment::create([
                 'user_id'          => $user->id,
                 'vet_profile_id'   => $vetProfile->id,
-                'pet_id'           => $data['pet_id'] ?? null,
+                'pet_id'           => $data['pet_id'],
                 'scheduled_at'     => $data['scheduled_at'],
                 'duration_minutes' => $data['duration_minutes'] ?? 30,
                 'reason'           => $data['reason'],
                 'notes'            => $data['notes'] ?? null,
+                'appointment_type' => $appointmentType,
+                'is_emergency'     => $data['is_emergency'] ?? false,
+                'photo_url'        => $data['photo_url'] ?? null,
+                'home_address'     => $data['home_address'] ?? null,
+                'home_latitude'    => $data['home_latitude'] ?? null,
+                'home_longitude'   => $data['home_longitude'] ?? null,
+                'fee_amount'       => $vetProfile->consultation_fee,
                 'status'           => 'pending',
             ]);
+
+            // Increment vet total appointments
+            $vetProfile->increment('total_appointments');
+
+            // Audit log
+            $this->auditService->logStatusChange(
+                $user->id, Appointment::class, $appointment->id, 'none', 'pending', 'Appointment created'
+            );
 
             Log::info('Appointment created', [
                 'appointment_uuid' => $appointment->uuid,
                 'user_id'          => $user->id,
                 'vet_profile_id'   => $vetProfile->id,
                 'scheduled_at'     => $data['scheduled_at'],
+                'type'             => $appointmentType,
             ]);
 
             // Notify the vet user
@@ -64,28 +116,28 @@ class AppointmentService
      */
     public function confirm(Appointment $appointment): Appointment
     {
-        return DB::transaction(function () use ($appointment) {
-            if (!$appointment->canBeConfirmed()) {
-                throw new \DomainException('This appointment cannot be confirmed.');
-            }
+        return $this->transitionStatus($appointment, 'confirmed', function ($appt) {
+            $appt->update(['status' => 'confirmed']);
+        });
+    }
 
-            $appointment->update(['status' => 'confirmed']);
+    /**
+     * Accept an appointment (vet action).
+     */
+    public function accept(Appointment $appointment): Appointment
+    {
+        return $this->transitionStatus($appointment, 'accepted', function ($appt) {
+            $appt->update(['status' => 'accepted', 'accepted_at' => now()]);
+        });
+    }
 
-            Log::info('Appointment confirmed', [
-                'appointment_uuid' => $appointment->uuid,
-                'vet_profile_id'   => $appointment->vet_profile_id,
-            ]);
-
-            // Notify the pet owner
-            try {
-                $appointment->user->notify(
-                    new AppointmentStatusNotification($appointment, 'pending')
-                );
-            } catch (\Throwable $e) {
-                report($e);
-            }
-
-            return $appointment->fresh(['user:id,name', 'vetProfile:id,uuid,clinic_name,vet_name', 'pet:id,name,species']);
+    /**
+     * Reject an appointment (vet action).
+     */
+    public function reject(Appointment $appointment, string $reason): Appointment
+    {
+        return $this->transitionStatus($appointment, 'rejected', function ($appt) use ($reason) {
+            $appt->update(['status' => 'rejected', 'rejected_at' => now(), 'rejection_reason' => $reason]);
         });
     }
 
@@ -94,31 +146,17 @@ class AppointmentService
      */
     public function complete(Appointment $appointment, ?string $notes = null): Appointment
     {
-        if (!$appointment->canBeCompleted()) {
-            throw new \DomainException('This appointment cannot be marked as completed.');
-        }
+        return $this->transitionStatus($appointment, 'completed', function ($appt) use ($notes) {
+            $updateData = [
+                'status' => 'completed',
+                'completed_at' => now(),
+                'cancelled_at_slot_release' => now(),
+            ];
+            if ($notes) $updateData['notes'] = $notes;
+            $appt->update($updateData);
 
-        return DB::transaction(function () use ($appointment, $notes) {
-            $updateData = ['status' => 'completed'];
-            if ($notes) {
-                $updateData['notes'] = $notes;
-            }
-
-            $appointment->update($updateData);
-
-            Log::info('Appointment completed', [
-                'appointment_uuid' => $appointment->uuid,
-            ]);
-
-            try {
-                $appointment->user->notify(
-                    new AppointmentStatusNotification($appointment, 'confirmed')
-                );
-            } catch (\Throwable $e) {
-                report($e);
-            }
-
-            return $appointment->fresh(['user:id,name', 'vetProfile:id,uuid,clinic_name,vet_name', 'pet:id,name,species']);
+            // Update vet stats
+            $appt->vetProfile?->increment('completed_appointments');
         });
     }
 
@@ -127,39 +165,17 @@ class AppointmentService
      */
     public function cancel(Appointment $appointment, User $cancelledBy, string $reason): Appointment
     {
-        if (!$appointment->canBeCancelledBy($cancelledBy)) {
-            throw new \DomainException('You cannot cancel this appointment.');
-        }
+        $isUserCancel = $cancelledBy->id === $appointment->user_id;
+        $status = $isUserCancel ? 'cancelled_by_user' : ($cancelledBy->isVet() ? 'cancelled_by_vet' : 'cancelled');
 
-        return DB::transaction(function () use ($appointment, $cancelledBy, $reason) {
-            $previousStatus = $appointment->status;
-
-            $appointment->update([
-                'status'              => 'cancelled',
+        return $this->transitionStatus($appointment, $status, function ($appt) use ($cancelledBy, $reason, $status) {
+            $appt->update([
+                'status' => $status,
                 'cancellation_reason' => $reason,
-                'cancelled_by'        => $cancelledBy->id,
+                'cancelled_by' => $cancelledBy->id,
+                'cancelled_at' => now(),
+                'cancelled_at_slot_release' => now(),
             ]);
-
-            Log::info('Appointment cancelled', [
-                'appointment_uuid' => $appointment->uuid,
-                'cancelled_by'     => $cancelledBy->id,
-                'reason'           => $reason,
-            ]);
-
-            // Notify the other party
-            try {
-                $notifyUser = ($cancelledBy->id === $appointment->user_id)
-                    ? $appointment->vetProfile->user
-                    : $appointment->user;
-
-                $notifyUser?->notify(
-                    new AppointmentStatusNotification($appointment, $previousStatus)
-                );
-            } catch (\Throwable $e) {
-                report($e);
-            }
-
-            return $appointment->fresh(['user:id,name', 'vetProfile:id,uuid,clinic_name,vet_name', 'pet:id,name,species']);
         });
     }
 
@@ -168,22 +184,91 @@ class AppointmentService
      */
     public function markNoShow(Appointment $appointment): Appointment
     {
-        if ($appointment->status !== 'confirmed') {
-            throw new \DomainException('Only confirmed appointments can be marked as no-show.');
-        }
+        return $this->transitionStatus($appointment, 'no_show', function ($appt) {
+            $appt->update([
+                'status' => 'no_show',
+                'cancelled_at_slot_release' => now(),
+            ]);
+        });
+    }
 
-        return DB::transaction(function () use ($appointment) {
-            $appointment->update(['status' => 'no_show']);
+    /**
+     * Start Visit — vet clicks "Start Visit" with location verification.
+     */
+    public function startVisit(Appointment $appointment, ?float $latitude = null, ?float $longitude = null): Appointment
+    {
+        return $this->transitionStatus($appointment, 'in_progress', function ($appt) use ($latitude, $longitude) {
+            $appt->update([
+                'status' => 'in_progress',
+                'visit_started_at' => now(),
+                'vet_start_latitude' => $latitude,
+                'vet_start_longitude' => $longitude,
+            ]);
+        });
+    }
 
-            Log::info('Appointment marked no-show', [
+    /**
+     * End Visit — vet clicks "End Visit" with location verification.
+     */
+    public function endVisit(Appointment $appointment, ?float $latitude = null, ?float $longitude = null, ?string $notes = null): Appointment
+    {
+        return $this->transitionStatus($appointment, 'completed', function ($appt) use ($latitude, $longitude, $notes) {
+            $updateData = [
+                'status' => 'completed',
+                'completed_at' => now(),
+                'visit_ended_at' => now(),
+                'vet_end_latitude' => $latitude,
+                'vet_end_longitude' => $longitude,
+                'cancelled_at_slot_release' => now(),
+            ];
+            if ($notes) $updateData['notes'] = $notes;
+            $appt->update($updateData);
+
+            $appt->vetProfile?->increment('completed_appointments');
+        });
+    }
+
+    /**
+     * Generic status transition with validation, locking, audit, and notification.
+     */
+    private function transitionStatus(Appointment $appointment, string $targetStatus, callable $mutator): Appointment
+    {
+        return DB::transaction(function () use ($appointment, $targetStatus, $mutator) {
+            $appointment = Appointment::where('id', $appointment->id)->lockForUpdate()->first();
+            $previousStatus = $appointment->status;
+
+            $allowed = self::VALID_TRANSITIONS[$previousStatus] ?? [];
+            if (!in_array($targetStatus, $allowed, true)) {
+                throw new \DomainException(
+                    "Cannot transition appointment from '{$previousStatus}' to '{$targetStatus}'."
+                );
+            }
+
+            $mutator($appointment);
+
+            // Audit log
+            $this->auditService->logStatusChange(
+                auth()->id(),
+                Appointment::class,
+                $appointment->id,
+                $previousStatus,
+                $targetStatus
+            );
+
+            Log::info("Appointment {$targetStatus}", [
                 'appointment_uuid' => $appointment->uuid,
-                'vet_profile_id'   => $appointment->vet_profile_id,
+                'from' => $previousStatus,
+                'to' => $targetStatus,
             ]);
 
-            // Notify the pet owner
+            // Notify
             try {
-                $appointment->user->notify(
-                    new AppointmentStatusNotification($appointment, 'confirmed')
+                $notifyUser = (auth()->id() === $appointment->user_id)
+                    ? $appointment->vetProfile?->user
+                    : $appointment->user;
+
+                $notifyUser?->notify(
+                    new AppointmentStatusNotification($appointment, $previousStatus)
                 );
             } catch (\Throwable $e) {
                 report($e);
@@ -221,7 +306,7 @@ class AppointmentService
         int $perPage = 15
     ): LengthAwarePaginator {
         $query = Appointment::forVet($vetProfileId)
-            ->with(['user:id,name,phone', 'pet:id,name,species']);
+            ->with(['user:id,name,email,phone', 'pet:id,name,species']);
 
         if ($status) {
             $query->byStatus($status);
@@ -245,6 +330,22 @@ class AppointmentService
     }
 
     /**
+     * Find appointment by UUID, with numeric ID fallback for legacy clients.
+     */
+    public function findByReference(string $reference): ?Appointment
+    {
+        $query = Appointment::with(['user:id,name', 'vetProfile:id,uuid,clinic_name,vet_name', 'pet:id,name,species']);
+
+        if (is_numeric($reference)) {
+            return $query->where('id', (int) $reference)
+                ->orWhere('uuid', $reference)
+                ->first();
+        }
+
+        return $query->where('uuid', $reference)->first();
+    }
+
+    /**
      * Get available slots for a vet on a given date.
      */
     public function getAvailableSlots(VetProfile $vetProfile, string $date): array
@@ -263,7 +364,7 @@ class AppointmentService
         // Get existing bookings for this date
         $bookedSlots = Appointment::forVet($vetProfile->id)
             ->onDate($date)
-            ->whereIn('status', ['pending', 'confirmed'])
+            ->whereIn('status', ['pending', 'accepted', 'confirmed', 'in_progress'])
             ->pluck('scheduled_at')
             ->map(fn ($dt) => $dt->format('H:i'))
             ->toArray();

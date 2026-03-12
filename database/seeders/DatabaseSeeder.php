@@ -71,7 +71,6 @@ class DatabaseSeeder extends Seeder
                 $vetProfile->update([
                     'user_id' => $vetUser->id,
                     'vet_status' => 'approved',
-                    'verified_at' => now(),
                 ]);
             }
         }

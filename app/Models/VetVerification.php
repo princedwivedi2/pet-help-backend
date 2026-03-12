@@ -13,6 +13,7 @@ class VetVerification extends Model
         'admin_id',
         'action',
         'notes',
+        'reason',
         'verified_fields',
         'document_snapshot',
         'missing_fields',

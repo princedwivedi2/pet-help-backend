@@ -17,6 +17,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Database\QueryException;
 
 class AuthController extends Controller
 {
@@ -27,12 +28,17 @@ class AuthController extends Controller
      */
     public function register(RegisterRequest $request): JsonResponse
     {
-        // Password is hashed automatically via User model 'hashed' cast — no Hash::make needed
-        $user = User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => $request->password,
-        ]);
+        try {
+            // Password is hashed automatically via User model 'hashed' cast — no Hash::make needed
+            $user = User::create([
+                'name' => $request->name,
+                'email' => $request->email,
+                'password' => $request->password,
+            ]);
+        } catch (QueryException $e) {
+            report($e);
+            return $this->error('Registration failed. This email may already be in use.', null, 409);
+        }
 
         // Auto-verify email for development/testing
         // TODO: Remove this in production and uncomment the event below
@@ -87,6 +93,8 @@ class AuthController extends Controller
         if (!$user->hasVerifiedEmail()) {
             $user->markEmailAsVerified();
         }
+
+        $user->forceFill(['last_login_at' => now()])->save();
 
         $token = $user->createToken('mobile-app')->plainTextToken;
 
@@ -249,5 +257,32 @@ class AuthController extends Controller
         return $this->success('Profile updated successfully', [
             'user' => $user->fresh(),
         ]);
+    }
+
+    /**
+     * Delete authenticated user's account.
+     * DELETE /api/v1/auth/account
+     */
+    public function deleteAccount(Request $request): JsonResponse
+    {
+        $request->validate([
+            'password' => 'required|string',
+        ]);
+
+        $user = $request->user();
+
+        if (!Hash::check($request->password, $user->password)) {
+            return $this->validationError('Password is incorrect', [
+                'password' => ['The provided password does not match.'],
+            ]);
+        }
+
+        // Revoke all tokens
+        $user->tokens()->delete();
+
+        // Delete the user account
+        $user->delete();
+
+        return $this->success('Account deleted successfully');
     }
 }

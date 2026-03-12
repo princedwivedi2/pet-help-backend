@@ -10,6 +10,7 @@ use App\Models\CommunityReply;
 use App\Models\IncidentLog;
 use App\Models\Pet;
 use App\Models\SosRequest;
+use App\Models\User;
 use App\Models\VetProfile;
 use App\Policies\AppointmentPolicy;
 use App\Policies\BlogCommentPolicy;
@@ -20,6 +21,7 @@ use App\Policies\IncidentPolicy;
 use App\Policies\PetPolicy;
 use App\Policies\SosPolicy;
 use App\Policies\VetProfilePolicy;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
@@ -43,6 +45,12 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Schema::defaultStringLength(191);
+
+        Relation::enforceMorphMap([
+            'appointment' => Appointment::class,
+            'sos_request' => SosRequest::class,
+            'user' => User::class,
+        ]);
 
         Gate::policy(Pet::class, PetPolicy::class);
         Gate::policy(SosRequest::class, SosPolicy::class);

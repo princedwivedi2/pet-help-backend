@@ -9,12 +9,14 @@ use App\Models\Appointment;
 use App\Models\VetProfile;
 use App\Services\AppointmentService;
 use App\Traits\ApiResponse;
+use Illuminate\Database\QueryException;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class AppointmentController extends Controller
 {
-    use ApiResponse;
+    use AuthorizesRequests, ApiResponse;
 
     public function __construct(
         private AppointmentService $appointmentService
@@ -28,6 +30,29 @@ class AppointmentController extends Controller
     {
         $user = $request->user();
         $perPage = min((int) ($request->per_page ?? 15), 50);
+
+        // If user is a vet, return vet appointments automatically
+        if ($user->isVet()) {
+            $vetProfile = VetProfile::where('user_id', $user->id)->first();
+            if ($vetProfile) {
+                $appointments = $this->appointmentService->getVetAppointments(
+                    $vetProfile->id,
+                    $request->status,
+                    $request->date,
+                    $perPage
+                );
+
+                return $this->success('Vet appointments retrieved successfully', [
+                    'appointments' => $appointments->items(),
+                    'pagination' => [
+                        'current_page' => $appointments->currentPage(),
+                        'last_page'    => $appointments->lastPage(),
+                        'per_page'     => $appointments->perPage(),
+                        'total'        => $appointments->total(),
+                    ],
+                ]);
+            }
+        }
 
         $appointments = $this->appointmentService->getUserAppointments(
             $user,
@@ -101,6 +126,10 @@ class AppointmentController extends Controller
             ]);
         } catch (\DomainException $e) {
             return $this->error($e->getMessage(), null, 409);
+        } catch (QueryException $e) {
+            // FK or unique-constraint violation (InnoDB enforcement)
+            report($e);
+            return $this->error('This time slot is no longer available. Please choose another.', null, 409);
         }
     }
 
@@ -110,7 +139,7 @@ class AppointmentController extends Controller
      */
     public function show(string $uuid): JsonResponse
     {
-        $appointment = $this->appointmentService->findByUuid($uuid);
+        $appointment = $this->appointmentService->findByReference($uuid);
 
         if (!$appointment) {
             return $this->notFound('Appointment not found');
@@ -124,12 +153,12 @@ class AppointmentController extends Controller
     }
 
     /**
-     * Update appointment status (confirm / complete / cancel).
+     * Update appointment status (confirm / complete / cancel / accept / reject / start_visit / end_visit).
      * PUT /api/v1/appointments/{uuid}/status
      */
     public function updateStatus(UpdateAppointmentStatusRequest $request, string $uuid): JsonResponse
     {
-        $appointment = $this->appointmentService->findByUuid($uuid);
+        $appointment = $this->appointmentService->findByReference($uuid);
 
         if (!$appointment) {
             return $this->notFound('Appointment not found');
@@ -137,13 +166,50 @@ class AppointmentController extends Controller
 
         try {
             $appointment = match ($request->status) {
-                'confirmed' => $this->confirmAppointment($request, $appointment),
-                'completed' => $this->completeAppointment($request, $appointment),
-                'cancelled' => $this->cancelAppointment($request, $appointment),
-                'no_show'   => $this->markNoShow($request, $appointment),
+                'confirmed'   => $this->confirmAppointment($request, $appointment),
+                'completed'   => $this->completeAppointment($request, $appointment),
+                'cancelled'   => $this->cancelAppointment($request, $appointment),
+                'no_show'     => $this->markNoShow($request, $appointment),
+                'accepted'    => $this->acceptAppointment($request, $appointment),
+                'rejected'    => $this->rejectAppointment($request, $appointment),
+                'in_progress' => $this->startVisitAction($request, $appointment),
+                default       => throw new \DomainException("Unsupported status: {$request->status}"),
             };
 
             return $this->success('Appointment status updated', [
+                'appointment' => $appointment,
+            ]);
+        } catch (\DomainException $e) {
+            return $this->error($e->getMessage(), null, 422);
+        } catch (QueryException $e) {
+            report($e);
+            return $this->error('Unable to update appointment status. Please try again.', null, 409);
+        }
+    }
+
+    /**
+     * End a visit (separate endpoint for location verification).
+     * PUT /api/v1/appointments/{uuid}/end-visit
+     */
+    public function endVisit(Request $request, string $uuid): JsonResponse
+    {
+        $appointment = $this->appointmentService->findByReference($uuid);
+
+        if (!$appointment) {
+            return $this->notFound('Appointment not found');
+        }
+
+        $this->authorize('complete', $appointment);
+
+        try {
+            $appointment = $this->appointmentService->endVisit(
+                $appointment,
+                $request->latitude ? (float) $request->latitude : null,
+                $request->longitude ? (float) $request->longitude : null,
+                $request->notes
+            );
+
+            return $this->success('Visit ended successfully', [
                 'appointment' => $appointment,
             ]);
         } catch (\DomainException $e) {
@@ -198,5 +264,27 @@ class AppointmentController extends Controller
     {
         $this->authorize('complete', $appointment);
         return $this->appointmentService->markNoShow($appointment);
+    }
+
+    private function acceptAppointment(Request $request, Appointment $appointment): Appointment
+    {
+        $this->authorize('confirm', $appointment);
+        return $this->appointmentService->accept($appointment);
+    }
+
+    private function rejectAppointment(Request $request, Appointment $appointment): Appointment
+    {
+        $this->authorize('confirm', $appointment);
+        return $this->appointmentService->reject($appointment, $request->reason ?? 'No reason provided');
+    }
+
+    private function startVisitAction(Request $request, Appointment $appointment): Appointment
+    {
+        $this->authorize('complete', $appointment);
+        return $this->appointmentService->startVisit(
+            $appointment,
+            $request->latitude ? (float) $request->latitude : null,
+            $request->longitude ? (float) $request->longitude : null
+        );
     }
 }

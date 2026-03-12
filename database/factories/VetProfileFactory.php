@@ -19,7 +19,6 @@ class VetProfileFactory extends Factory
             'phone' => $this->faker->phoneNumber(),
             'email' => $this->faker->unique()->safeEmail(),
             'address' => $this->faker->streetAddress(),
-            'city' => $this->faker->city(),
             'state' => $this->faker->stateAbbr(),
             'postal_code' => $this->faker->postcode(),
             'latitude' => $this->faker->latitude(40.5, 40.9),
@@ -28,10 +27,8 @@ class VetProfileFactory extends Factory
             'accepted_species' => ['dog', 'cat'],
             'is_emergency_available' => $this->faker->boolean(30),
             'is_24_hours' => $this->faker->boolean(10),
-            'is_verified' => $this->faker->boolean(70),
+            'vet_status' => $this->faker->randomElement(['pending', 'approved', 'approved', 'approved']),
             'is_active' => true,
-            'rating' => $this->faker->randomFloat(1, 3.0, 5.0),
-            'review_count' => $this->faker->numberBetween(0, 500),
         ];
     }
 
@@ -53,7 +50,7 @@ class VetProfileFactory extends Factory
     public function verified(): static
     {
         return $this->state(fn (array $attributes) => [
-            'is_verified' => true,
+            'vet_status' => 'approved',
         ]);
     }
 

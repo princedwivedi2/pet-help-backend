@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\VetProfile;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Builder;
 
 class VetSearchService
 {
@@ -21,50 +22,104 @@ class VetSearchService
         ?string $specialization = null,
         ?float $minRating = null
     ): Collection {
-        $query = VetProfile::query()
-            ->active()
-            ->verified()
+        $query = $this->baseApprovedQuery($emergencyOnly, $availableOnly, $specialization, $minRating)
+            ->whereNotNull('latitude')
+            ->whereNotNull('longitude')
+            ->where(function ($q) {
+                $q->where('latitude', '!=', 0)
+                  ->orWhere('longitude', '!=', 0);
+            })
             ->select('vet_profiles.*')
             ->selectRaw($this->haversineFormula($latitude, $longitude) . ' AS distance_km')
             ->having('distance_km', '<=', $radiusKm);
 
-        if ($emergencyOnly) {
-            $query->emergencyAvailable();
-        }
-
-        if ($availableOnly) {
-            $query->where(function ($q) {
-                $q->where('is_24_hours', true)
-                    ->orWhereHas('availabilities', function ($subQ) {
-                        $dayOfWeek = now()->dayOfWeek;
-                        $currentTime = now()->format('H:i:s');
-                        $subQ->where('day_of_week', $dayOfWeek)
-                            ->where('open_time', '<=', $currentTime)
-                            ->where('close_time', '>=', $currentTime);
-                    });
+        if ($city) {
+            $escapedCity = $this->escapeLike($city);
+            $query->where(function ($q) use ($escapedCity) {
+                $q->where('city', 'like', '%' . $escapedCity . '%')
+                  ->orWhere('address', 'like', '%' . $escapedCity . '%');
             });
         }
 
-        if ($city) {
-            $escapedCity = str_replace(['%', '_', '\\'], ['\\%', '\\_', '\\\\'], $city);
-            $query->where('city', 'LIKE', '%' . $escapedCity . '%');
-        }
-
-        if ($specialization) {
-            $query->whereJsonContains('services', $specialization);
-        }
-
-        if ($minRating !== null) {
-            $query->where('rating', '>=', $minRating);
-        }
-
         $query = match ($sortBy) {
-            'rating' => $query->orderByDesc('rating')->orderBy('distance_km'),
             'distance' => $query->orderBy('distance_km'),
+            'rating' => $query->orderByDesc('avg_rating')->orderBy('distance_km'),
             default => $query->orderBy('distance_km'),
         };
 
         return $query->limit($limit)->get();
+    }
+
+    /**
+     * Return three discovery buckets so frontend can always render vets:
+     * nearby vets, same-city vets, and all approved vets.
+     */
+    public function discoverApprovedVets(
+        ?float $latitude,
+        ?float $longitude,
+        ?string $city = null,
+        float $radiusKm = 10,
+        bool $emergencyOnly = false,
+        bool $availableOnly = false,
+        ?string $specialization = null,
+        ?float $minRating = null,
+        int $limit = 30
+    ): array {
+        $limit = max(1, min($limit, 100));
+        $base = $this->baseApprovedQuery($emergencyOnly, $availableOnly, $specialization, $minRating);
+
+        $allQuery = (clone $base)->select('vet_profiles.*');
+        if ($latitude !== null && $longitude !== null) {
+            $allQuery->selectRaw($this->haversineFormula($latitude, $longitude) . ' AS distance_km')
+                ->orderBy('distance_km');
+        } else {
+            $allQuery->orderByDesc('is_featured')->orderByDesc('avg_rating')->orderBy('vet_name');
+        }
+        $allVets = $allQuery->limit($limit)->get();
+
+        $nearbyVets = collect();
+        if ($latitude !== null && $longitude !== null) {
+            $nearbyVets = (clone $base)
+                ->whereNotNull('latitude')
+                ->whereNotNull('longitude')
+                ->where(function ($q) {
+                    $q->where('latitude', '!=', 0)
+                      ->orWhere('longitude', '!=', 0);
+                })
+                ->select('vet_profiles.*')
+                ->selectRaw($this->haversineFormula($latitude, $longitude) . ' AS distance_km')
+                ->having('distance_km', '<=', $radiusKm)
+                ->orderBy('distance_km')
+                ->limit($limit)
+                ->get();
+        }
+
+        $cityName = trim((string) $city);
+        $cityVets = collect();
+        if ($cityName !== '') {
+            $escapedCity = $this->escapeLike($cityName);
+            $cityQuery = (clone $base)
+                ->where(function ($q) use ($escapedCity) {
+                    $q->where('city', 'like', '%' . $escapedCity . '%')
+                        ->orWhere('address', 'like', '%' . $escapedCity . '%');
+                })
+                ->select('vet_profiles.*');
+
+            if ($latitude !== null && $longitude !== null) {
+                $cityQuery->selectRaw($this->haversineFormula($latitude, $longitude) . ' AS distance_km')
+                    ->orderBy('distance_km');
+            } else {
+                $cityQuery->orderByDesc('avg_rating')->orderBy('vet_name');
+            }
+
+            $cityVets = $cityQuery->limit($limit)->get();
+        }
+
+        return [
+            'nearby_vets' => $nearbyVets,
+            'city_vets' => $cityVets,
+            'all_vets' => $allVets,
+        ];
     }
 
     public function findByUuid(string $uuid): ?VetProfile
@@ -72,7 +127,7 @@ class VetSearchService
         return VetProfile::where('uuid', $uuid)
             ->active()
             ->verified()
-            ->with('availabilities')
+            ->with(['availabilities', 'user:id,name'])
             ->first();
     }
 
@@ -93,6 +148,52 @@ class VetSearchService
                 ))
             )
         )";
+    }
+
+    private function baseApprovedQuery(
+        bool $emergencyOnly,
+        bool $availableOnly,
+        ?string $specialization,
+        ?float $minRating
+    ): Builder {
+        $query = VetProfile::query()->active()->verified();
+
+        if ($emergencyOnly) {
+            $query->emergencyAvailable();
+        }
+
+        if ($availableOnly) {
+            $query->where(function ($q) {
+                $q->where('is_24_hours', true)
+                    ->orWhereHas('availabilities', function ($subQ) {
+                        $dayOfWeek = now()->dayOfWeek;
+                        $currentTime = now()->format('H:i:s');
+                        $subQ->where('day_of_week', $dayOfWeek)
+                            ->where('open_time', '<=', $currentTime)
+                            ->where('close_time', '>=', $currentTime);
+                    });
+            });
+        }
+
+        if ($specialization) {
+            $escaped = $this->escapeLike($specialization);
+            $query->where(function ($q) use ($escaped, $specialization) {
+                $q->where('specialization', 'like', '%' . $escaped . '%')
+                    ->orWhere('qualifications', 'like', '%' . $escaped . '%')
+                    ->orWhereJsonContains('services', $specialization);
+            });
+        }
+
+        if ($minRating !== null) {
+            $query->where('avg_rating', '>=', $minRating);
+        }
+
+        return $query;
+    }
+
+    private function escapeLike(string $value): string
+    {
+        return str_replace(['%', '_', '\\'], ['\\%', '\\_', '\\\\'], $value);
     }
 
     public function calculateDistance(

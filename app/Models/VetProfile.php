@@ -19,6 +19,7 @@ class VetProfile extends Model
         'vet_name',
         'phone',
         'email',
+        'profile_photo',
         'address',
         'city',
         'state',
@@ -26,19 +27,31 @@ class VetProfile extends Model
         'latitude',
         'longitude',
         'qualifications',
+        'specialization',
         'license_number',
         'years_of_experience',
         'license_document_url',
+        'degree_certificate_url',
+        'government_id_url',
+        'verification_documents',
         'services',
         'accepted_species',
+        'working_hours',
         'is_emergency_available',
         'is_24_hours',
-        'is_verified',
         'vet_status',
-        'rejection_reason',
-        'verified_at',
-        'verified_by',
+        'verification_status',
         'is_active',
+        'availability_status',
+        'consultation_fee',
+        'home_visit_fee',
+        'consultation_types',
+        'is_featured',
+        'featured_until',
+        'total_appointments',
+        'completed_appointments',
+        'acceptance_rate',
+        'avg_response_minutes',
     ];
 
     protected function casts(): array
@@ -48,14 +61,18 @@ class VetProfile extends Model
             'longitude' => 'decimal:8',
             'services' => 'array',
             'accepted_species' => 'array',
+            'working_hours' => 'array',
+            'verification_documents' => 'array',
+            'consultation_types' => 'array',
             'is_emergency_available' => 'boolean',
             'is_24_hours' => 'boolean',
-            'is_verified' => 'boolean',
             'is_active' => 'boolean',
-            'rating' => 'decimal:1',
-            'review_count' => 'integer',
+            'is_featured' => 'boolean',
             'years_of_experience' => 'integer',
-            'verified_at' => 'datetime',
+            'consultation_fee' => 'integer',
+            'total_appointments' => 'integer',
+            'completed_appointments' => 'integer',
+            'featured_until' => 'datetime',
         ];
     }
 
@@ -73,14 +90,13 @@ class VetProfile extends Model
         return $this->belongsTo(User::class);
     }
 
-    public function verifiedByAdmin(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'verified_by');
-    }
-
+    /**
+     * @deprecated Use verifications() relationship instead.
+     * Alias kept for backward compatibility during transition.
+     */
     public function verificationLogs(): HasMany
     {
-        return $this->hasMany(VetVerificationLog::class);
+        return $this->verifications();
     }
 
     public function verifications(): HasMany
@@ -108,6 +124,26 @@ class VetProfile extends Model
         return $this->hasMany(Appointment::class);
     }
 
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(Review::class);
+    }
+
+    public function wallet()
+    {
+        return $this->hasOne(VetWallet::class);
+    }
+
+    public function visitRecords(): HasMany
+    {
+        return $this->hasMany(VisitRecord::class);
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(Payment::class);
+    }
+
     public function scopeActive($query)
     {
         return $query->where('is_active', true);
@@ -120,40 +156,60 @@ class VetProfile extends Model
 
     public function scopeVerified($query)
     {
-        return $query->where('is_verified', true)
-            ->where('vet_status', 'approved');
+        return $query->where('vet_status', 'approved');
     }
 
     public function scopeUnverified($query)
     {
-        return $query->where('vet_status', 'pending');
+        return $query->where(function ($q) {
+                        $q->where('vet_status', 'pending')
+                            ->orWhere('verification_status', 'needs_information');
+        });
     }
 
     public function scopeByStatus($query, string $status)
     {
-        return $query->where('vet_status', $status);
+        if ($status === 'pending') {
+            return $query->where(function ($q) {
+                $q->where('vet_status', 'pending')
+                  ->orWhere('verification_status', 'needs_information');
+            });
+        }
+
+        return $query->where(function ($q) use ($status) {
+            $q->where('vet_status', $status)
+              ->orWhere('verification_status', $status);
+        });
     }
 
     // ─── Helpers ────────────────────────────────────────────────────
 
     public function isApproved(): bool
     {
-        return $this->vet_status === 'approved';
+        return $this->vet_status === 'approved' || $this->verification_status === 'approved';
     }
 
     public function isPending(): bool
     {
-        return $this->vet_status === 'pending';
+        if ($this->vet_status === 'pending') {
+            return true;
+        }
+
+        if (in_array($this->vet_status, ['approved', 'rejected', 'suspended'], true)) {
+            return false;
+        }
+
+        return in_array($this->verification_status, ['pending', 'needs_information'], true);
     }
 
     public function isSuspended(): bool
     {
-        return $this->vet_status === 'suspended';
+        return $this->vet_status === 'suspended' || $this->verification_status === 'suspended';
     }
 
     public function isRejected(): bool
     {
-        return $this->vet_status === 'rejected';
+        return $this->vet_status === 'rejected' || $this->verification_status === 'rejected';
     }
 
     public function getRouteKeyName(): string

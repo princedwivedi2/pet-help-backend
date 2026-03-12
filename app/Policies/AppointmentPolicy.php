@@ -26,30 +26,27 @@ class AppointmentPolicy
     }
 
     /**
-     * Confirm: the vet who received the appointment, or admin.
+     * Confirm: only the vet who received the appointment.
      */
     public function confirm(User $user, Appointment $appointment): bool
     {
-        return $user->id === $appointment->vetProfile?->user_id
-            || $user->isAdmin();
+        return $user->id === $appointment->vetProfile?->user_id;
     }
 
     /**
-     * Complete: the vet who received the appointment, or admin.
+     * Complete: only the vet who received the appointment.
      */
     public function complete(User $user, Appointment $appointment): bool
     {
-        return $user->id === $appointment->vetProfile?->user_id
-            || $user->isAdmin();
+        return $user->id === $appointment->vetProfile?->user_id;
     }
 
     /**
-     * Cancel: the owner, the vet, or admin.
+     * Cancel: only the owner or the assigned vet.
      */
     public function cancel(User $user, Appointment $appointment): bool
     {
         return $user->id === $appointment->user_id
-            || $user->id === $appointment->vetProfile?->user_id
-            || $user->isAdmin();
+            || $user->id === $appointment->vetProfile?->user_id;
     }
 }

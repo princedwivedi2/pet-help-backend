@@ -13,13 +13,51 @@ use Illuminate\Support\Facades\Notification;
 
 class SosService
 {
+    /**
+     * Expanded SOS status transitions (Zomato-style tracking).
+     */
+    private const VALID_TRANSITIONS = [
+        'pending'               => ['sos_pending', 'acknowledged', 'sos_accepted', 'cancelled', 'sos_cancelled', 'expired'],
+        'sos_pending'           => ['sos_accepted', 'sos_cancelled', 'expired'],
+        'acknowledged'          => ['in_progress', 'sos_accepted', 'vet_on_the_way', 'cancelled', 'sos_cancelled'],
+        'sos_accepted'          => ['vet_on_the_way', 'in_progress', 'treatment_in_progress', 'sos_cancelled'],
+        'vet_on_the_way'        => ['arrived', 'sos_cancelled'],
+        'arrived'               => ['treatment_in_progress', 'in_progress', 'sos_cancelled'],
+        'in_progress'           => ['completed', 'sos_completed', 'cancelled', 'sos_cancelled'],
+        'treatment_in_progress' => ['sos_completed', 'completed', 'sos_cancelled'],
+        'completed'             => [],
+        'sos_completed'         => [],
+        'cancelled'             => [],
+        'sos_cancelled'         => [],
+        'expired'               => [],
+    ];
+
     public function __construct(
-        private VetSearchService $vetSearchService
+        private VetSearchService $vetSearchService,
+        private AuditService $auditService
     ) {}
 
     public function createSos(User $user, array $data): SosRequest
     {
         return DB::transaction(function () use ($user, $data) {
+            // Lock user's SOS rows to prevent duplicate active SOS and rate-limit bypass
+            $activeCount = SosRequest::where('user_id', $user->id)
+                ->whereNotIn('status', ['completed', 'cancelled', 'sos_completed', 'sos_cancelled', 'expired'])
+                ->lockForUpdate()
+                ->count();
+
+            if ($activeCount > 0) {
+                throw new \DomainException('You already have an active SOS request. Please complete or cancel it first.');
+            }
+
+            $recentCount = SosRequest::where('user_id', $user->id)
+                ->where('created_at', '>=', now()->subHour())
+                ->count();
+
+            if ($recentCount >= 5) {
+                throw new \DomainException('You can only create 5 SOS requests per hour. Please wait before creating another.');
+            }
+
             $sosRequest = SosRequest::create([
                 'user_id' => $user->id,
                 'pet_id' => $data['pet_id'] ?? null,
@@ -28,7 +66,8 @@ class SosService
                 'address' => $data['address'] ?? null,
                 'description' => $data['description'],
                 'emergency_type' => $data['emergency_type'] ?? 'other',
-                'status' => 'pending',
+                'status' => 'sos_pending',
+                'auto_expire_at' => now()->addMinutes(30), // Auto-expire after 30 minutes
             ]);
 
             // Create incident log automatically
@@ -52,6 +91,9 @@ class SosService
                 'lng' => $data['longitude'],
             ]);
 
+            // Audit
+            $this->auditService->logStatusChange($user->id, SosRequest::class, $sosRequest->id, null, 'sos_pending');
+
             // Dispatch notification to SOS owner (confirmation)
             try {
                 $user->notify(new SosAlertNotification($sosRequest));
@@ -65,8 +107,6 @@ class SosService
 
     public function findNearestVetsStub(float $latitude, float $longitude, int $limit = 5): array
     {
-        // Placeholder: In production, this would integrate with
-        // notification services to alert nearby vets
         $nearbyVets = $this->vetSearchService->getNearbyVets(
             $latitude,
             $longitude,
@@ -86,39 +126,88 @@ class SosService
     }
 
     /**
-     * Valid SOS status transitions.
-     * Prevents backward transitions (e.g., completed → pending).
+     * Main status update method with full lifecycle support.
      */
-    private const VALID_TRANSITIONS = [
-        'pending'      => ['acknowledged', 'cancelled'],
-        'acknowledged' => ['in_progress', 'cancelled'],
-        'in_progress'  => ['completed', 'cancelled'],
-        'completed'    => [],
-        'cancelled'    => [],
-    ];
-
-    public function updateStatus(SosRequest $sosRequest, string $status, ?string $notes = null): SosRequest
+    public function updateStatus(SosRequest $sosRequest, string $status, ?string $notes = null, ?array $extra = []): SosRequest
     {
-        $current = $sosRequest->status;
-        $allowed = self::VALID_TRANSITIONS[$current] ?? [];
+        return DB::transaction(function () use ($sosRequest, $status, $notes, $extra) {
+            $sosRequest = SosRequest::where('id', $sosRequest->id)->lockForUpdate()->first();
 
-        if (!in_array($status, $allowed, true)) {
-            throw new \DomainException(
-                "Cannot transition SOS from '{$current}' to '{$status}'. Allowed: " . (implode(', ', $allowed) ?: 'none')
-            );
-        }
+            $current = $sosRequest->status;
+            $allowed = self::VALID_TRANSITIONS[$current] ?? [];
 
-        return DB::transaction(function () use ($sosRequest, $status, $notes) {
+            if (!in_array($status, $allowed, true)) {
+                throw new \DomainException(
+                    "Cannot transition SOS from '{$current}' to '{$status}'. Allowed: " . (implode(', ', $allowed) ?: 'none')
+                );
+            }
+
             $previousStatus = $sosRequest->status;
             $updateData = ['status' => $status];
 
-            if ($status === 'completed') {
-                $updateData['completed_at'] = now();
-                if ($notes) {
-                    $updateData['resolution_notes'] = $notes;
-                }
-            } elseif ($status === 'acknowledged') {
-                $updateData['acknowledged_at'] = now();
+            // Status-specific data
+            switch ($status) {
+                case 'sos_accepted':
+                case 'acknowledged':
+                    $updateData['acknowledged_at'] = now();
+                    if ($previousStatus === 'sos_pending') {
+                        $updateData['response_time_seconds'] = now()->diffInSeconds($sosRequest->created_at);
+                    }
+                    if (isset($extra['vet_profile_id'])) {
+                        $updateData['assigned_vet_id'] = $extra['vet_profile_id'];
+                    }
+                    break;
+
+                case 'vet_on_the_way':
+                    $updateData['vet_departed_at'] = now();
+                    if (isset($extra['vet_latitude'])) {
+                        $updateData['vet_latitude'] = $extra['vet_latitude'];
+                        $updateData['vet_longitude'] = $extra['vet_longitude'];
+                    }
+                    break;
+
+                case 'arrived':
+                    $updateData['vet_arrived_at'] = now();
+                    if (isset($extra['vet_latitude'])) {
+                        $updateData['vet_latitude'] = $extra['vet_latitude'];
+                        $updateData['vet_longitude'] = $extra['vet_longitude'];
+                    }
+                    if ($sosRequest->vet_departed_at) {
+                        $updateData['arrival_time_seconds'] = now()->diffInSeconds($sosRequest->vet_departed_at);
+                    }
+                    break;
+
+                case 'treatment_in_progress':
+                case 'in_progress':
+                    $updateData['treatment_started_at'] = now();
+                    break;
+
+                case 'sos_completed':
+                case 'completed':
+                    $updateData['completed_at'] = now();
+                    if ($notes) {
+                        $updateData['resolution_notes'] = $notes;
+                    }
+                    if (isset($extra['emergency_charge'])) {
+                        $updateData['emergency_charge'] = $extra['emergency_charge'];
+                    }
+                    if (isset($extra['distance_travelled_km'])) {
+                        $updateData['distance_travelled_km'] = $extra['distance_travelled_km'];
+                    }
+                    break;
+
+                case 'sos_cancelled':
+                case 'cancelled':
+                    $updateData['completed_at'] = now();
+                    if ($notes) {
+                        $updateData['resolution_notes'] = $notes;
+                    }
+                    break;
+
+                case 'expired':
+                    $updateData['completed_at'] = now();
+                    $updateData['resolution_notes'] = 'Auto-expired — no vet accepted within the time limit.';
+                    break;
             }
 
             $sosRequest->update($updateData);
@@ -126,13 +215,16 @@ class SosService
             // Update related incident log status
             if ($sosRequest->incidentLog) {
                 $incidentStatus = match ($status) {
-                    'completed' => 'resolved',
-                    'cancelled' => 'resolved',
-                    'in_progress' => 'in_treatment',
+                    'completed', 'sos_completed' => 'resolved',
+                    'cancelled', 'sos_cancelled', 'expired' => 'resolved',
+                    'in_progress', 'treatment_in_progress' => 'in_treatment',
                     default => 'open',
                 };
                 $sosRequest->incidentLog->update(['status' => $incidentStatus]);
             }
+
+            // Audit
+            $this->auditService->logStatusChange(auth()->id(), SosRequest::class, $sosRequest->id, $previousStatus, $status);
 
             Log::channel('stack')->info('SOS status updated', [
                 'sos_uuid' => $sosRequest->uuid,
@@ -153,6 +245,51 @@ class SosService
         });
     }
 
+    /**
+     * Vet accepts the SOS and tracks location.
+     */
+    public function vetAccept(SosRequest $sosRequest, int $vetProfileId, ?float $lat = null, ?float $lng = null): SosRequest
+    {
+        return $this->updateStatus($sosRequest, 'sos_accepted', null, [
+            'vet_profile_id' => $vetProfileId,
+            'vet_latitude' => $lat,
+            'vet_longitude' => $lng,
+        ]);
+    }
+
+    /**
+     * Update vet's live location while en route.
+     */
+    public function updateVetLocation(SosRequest $sosRequest, float $lat, float $lng): SosRequest
+    {
+        $sosRequest->update([
+            'vet_latitude' => $lat,
+            'vet_longitude' => $lng,
+        ]);
+        return $sosRequest->fresh();
+    }
+
+    /**
+     * Expire SOS requests that passed their auto_expire_at timestamp.
+     */
+    public function expireStale(): int
+    {
+        $expired = SosRequest::whereIn('status', ['pending', 'sos_pending'])
+            ->whereNotNull('auto_expire_at')
+            ->where('auto_expire_at', '<=', now())
+            ->get();
+
+        foreach ($expired as $sos) {
+            try {
+                $this->updateStatus($sos, 'expired', null);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
+        return $expired->count();
+    }
+
     public function getActiveSosForUser(User $user): ?SosRequest
     {
         return $user->sosRequests()
@@ -160,6 +297,17 @@ class SosService
             ->with(['pet', 'assignedVet'])
             ->latest()
             ->first();
+    }
+
+    /**
+     * Get ALL active SOS requests (for vets and admins).
+     */
+    public function getAllActiveSos(): \Illuminate\Database\Eloquent\Collection
+    {
+        return SosRequest::active()
+            ->with(['user:id,name,phone', 'pet:id,name,species', 'assignedVet'])
+            ->latest()
+            ->get();
     }
 
     public function getUserSosCountLastHour(User $user): int

@@ -6,7 +6,8 @@ use App\Exceptions\VetApprovalException;
 use App\Exceptions\VetDocumentException;
 use App\Models\User;
 use App\Models\VetProfile;
-use App\Models\VetVerificationLog;
+use App\Models\VetVerification;
+use App\Notifications\VetApprovedNotification;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -28,82 +29,110 @@ class VetOnboardingService
      *
      * @param  array  $data   Validated form data
      * @param  array  $files  Uploaded document files (UploadedFile[])
+     * @param  UploadedFile|null  $profilePhoto  Optional profile photo upload
      * @return array  ['user', 'vet_profile', 'token', 'documents']
      */
-    public function apply(array $data, array $files = []): array
+    public function apply(array $data, array $files = [], ?UploadedFile $profilePhoto = null): array
     {
-        return DB::transaction(function () use ($data, $files) {
-            // Create user — password is auto-hashed by User model cast
-            $user = User::create([
-                'name'     => $data['full_name'],
-                'email'    => $data['email'],
-                'password' => $data['password'], // hashed via model cast
-                'phone'    => $data['phone_number'] ?? null,
-            ]);
+        // Store documents BEFORE the transaction so rollback doesn't leave orphaned files untracked
+        $documentPaths = $this->storeDocuments($files);
 
-            // Set role explicitly — not mass-assignable for security
-            $user->role = 'vet';
-            $user->save();
+        // Store profile photo if uploaded
+        $profilePhotoPath = null;
+        if ($profilePhoto instanceof UploadedFile && $profilePhoto->isValid()) {
+            $ext = $profilePhoto->getClientOriginalExtension();
+            $filename = Str::uuid()->toString() . '.' . $ext;
+            $profilePhotoPath = $profilePhoto->storeAs('vet-photos', $filename, 'public');
+        }
 
-            // Store documents with UUID filenames
-            $documentPaths = $this->storeDocuments($files);
+        try {
+            $result = DB::transaction(function () use ($data, $documentPaths, $profilePhotoPath) {
+                // Create user — password is auto-hashed by User model cast
+                $user = User::create([
+                    'name'     => $data['full_name'],
+                    'email'    => $data['email'],
+                    'password' => $data['password'], // hashed via model cast
+                    'phone'    => $data['phone_number'] ?? null,
+                ]);
 
-            // Create vet profile
-            $vetProfile = VetProfile::create([
-                'user_id'                => $user->id,
-                'vet_name'               => $data['full_name'],
-                'clinic_name'            => $data['clinic_name'],
-                'phone'                  => $data['phone_number'],
-                'email'                  => $data['email'],
-                'address'                => $data['clinic_address'],
-                'city'                   => $data['city'] ?? $this->extractCityFromAddress($data['clinic_address']),
-                'state'                  => $data['state'] ?? null,
-                'postal_code'            => $data['postal_code'] ?? null,
-                'latitude'               => $data['latitude'],
-                'longitude'              => $data['longitude'],
-                'qualifications'         => $data['qualifications'],
-                'license_number'         => $data['license_number'],
-                'years_of_experience'    => $data['years_of_experience'],
-                'accepted_species'       => $data['accepted_species'],
-                'services'               => $data['services_offered'],
-                'license_document_url'   => $documentPaths[0] ?? null, // primary doc
-                'is_emergency_available' => $data['is_emergency_available'] ?? false,
-                'is_24_hours'            => $data['is_24_hours'] ?? false,
-                'is_verified'            => false,
-                'vet_status'             => 'pending',
-                'is_active'              => true,
-            ]);
+                // Set role explicitly — not mass-assignable for security
+                $user->role = 'vet';
+                $user->save();
 
-            // Create an initial pending verification log
-            VetVerificationLog::create([
-                'vet_profile_id' => $vetProfile->id,
-                'admin_id'       => null,
-                'action'         => 'applied',
-                'reason'         => 'New vet application submitted',
-                'metadata'       => [
-                    'license_number'  => $data['license_number'],
-                    'vet_name'        => $data['full_name'],
-                    'documents_count' => count($documentPaths),
-                    'document_paths'  => $documentPaths,
-                ],
-            ]);
+                // Create vet profile
+                $vetProfile = VetProfile::create([
+                    'user_id'                => $user->id,
+                    'vet_name'               => $data['full_name'],
+                    'clinic_name'            => $data['clinic_name'],
+                    'phone'                  => $data['phone_number'] ?? $data['phone'] ?? null,
+                    'email'                  => $data['email'],
+                    'profile_photo'          => $profilePhotoPath ?? ($data['profile_photo'] ?? null),
+                    'address'                => $data['clinic_address'],
+                    'city'                   => $data['city'] ?? null,
+                    'state'                  => $data['state'] ?? null,
+                    'postal_code'            => $data['postal_code'] ?? null,
+                    'latitude'               => $data['latitude'],
+                    'longitude'              => $data['longitude'],
+                    'qualifications'         => $data['qualifications'] ?? $data['qualification'] ?? null,
+                    'specialization'         => $data['specialization'] ?? null,
+                    'license_number'         => $data['license_number'],
+                    'years_of_experience'    => $data['years_of_experience'],
+                    'consultation_fee'       => $data['consultation_fee'] ?? null,
+                    'home_visit_fee'         => $data['home_visit_fee'] ?? null,
+                    'accepted_species'       => $data['accepted_species'],
+                    'services'               => $data['services_offered'],
+                    'working_hours'          => $data['working_hours'] ?? null,
+                    'license_document_url'   => $documentPaths[0] ?? null, // primary doc
+                    'degree_certificate_url' => $data['degree_certificate'] ?? null,
+                    'government_id_url'      => $data['government_id'] ?? null,
+                    'verification_documents' => $data['verification_documents'] ?? $documentPaths,
+                    'is_emergency_available' => $data['is_emergency_available'] ?? false,
+                    'is_24_hours'            => $data['is_24_hours'] ?? false,
+                    'vet_status'             => 'pending',
+                    'verification_status'    => 'pending',
+                    'is_active'              => true,
+                ]);
 
-            // Do NOT issue a token — pending vets must wait for admin approval
-            // before they can log in (login guard checks vet_status=approved)
+                // Create an initial pending verification record
+                VetVerification::create([
+                    'vet_profile_id' => $vetProfile->id,
+                    'admin_id'       => null,
+                    'action'         => 'applied',
+                    'reason'         => 'New vet application submitted',
+                    'notes'          => null,
+                    'verified_fields' => [
+                        'license_number'  => $data['license_number'],
+                        'vet_name'        => $data['full_name'],
+                        'documents_count' => count($documentPaths),
+                        'document_paths'  => $documentPaths,
+                    ],
+                ]);
 
-            Log::channel('stack')->info('Vet application submitted', [
-                'user_id'        => $user->id,
-                'vet_profile_id' => $vetProfile->id,
-                'license_number' => $data['license_number'],
-                'documents'      => count($documentPaths),
-            ]);
+                // Do NOT issue a token — pending vets must wait for admin approval
+                // before they can log in (login guard checks vet_status=approved)
 
-            return [
-                'user'        => $user,
-                'vet_profile' => $vetProfile,
-                'documents'   => $documentPaths,
-            ];
-        });
+                Log::channel('stack')->info('Vet application submitted', [
+                    'user_id'        => $user->id,
+                    'vet_profile_id' => $vetProfile->id,
+                    'license_number' => $data['license_number'],
+                    'documents'      => count($documentPaths),
+                ]);
+
+                return [
+                    'user'        => $user,
+                    'vet_profile' => $vetProfile,
+                    'documents'   => $documentPaths,
+                ];
+            });
+        } catch (\Throwable $e) {
+            // DB transaction failed — clean up orphaned files
+            foreach ($documentPaths as $path) {
+                Storage::disk('public')->delete($path);
+            }
+            throw $e;
+        }
+
+        return $result;
     }
 
     /**
@@ -145,16 +174,34 @@ class VetOnboardingService
         $filename  = Str::uuid()->toString() . '.' . $extension;
         $path      = $file->storeAs('vet-documents', $filename, 'public');
 
-        // Update the primary license document URL
-        if ($type === 'license') {
-            $vetProfile->update(['license_document_url' => $path]);
-        }
+        try {
+            $fieldMap = [
+                'license' => 'license_document_url',
+                'degree' => 'degree_certificate_url',
+                'id_proof' => 'government_id_url',
+                'clinic_registration' => 'verification_documents',
+            ];
 
-        Log::info('Vet document uploaded', [
-            'vet_profile_id' => $vetProfile->id,
-            'document_type'  => $type,
-            'document_path'  => $path,
-        ]);
+            if (isset($fieldMap[$type])) {
+                if ($type === 'clinic_registration') {
+                    $existing = $vetProfile->verification_documents ?? [];
+                    $existing[] = $path;
+                    $vetProfile->update(['verification_documents' => $existing]);
+                } else {
+                    $vetProfile->update([$fieldMap[$type] => $path]);
+                }
+            }
+
+            Log::info('Vet document uploaded', [
+                'vet_profile_id' => $vetProfile->id,
+                'document_type'  => $type,
+                'document_path'  => $path,
+            ]);
+        } catch (\Throwable $e) {
+            // DB update failed — clean up orphaned file
+            Storage::disk('public')->delete($path);
+            throw $e;
+        }
 
         return $path;
     }
@@ -172,6 +219,7 @@ class VetOnboardingService
     /**
      * Get paginated list of vets by status.
      */
+    
     public function getVetsByStatus(string $status, int $perPage = 20): LengthAwarePaginator
     {
         return VetProfile::byStatus($status)
@@ -223,23 +271,20 @@ class VetOnboardingService
             $missingFields = $this->verificationService->getMissingFields($vetProfile);
             if (count($missingFields) > 0) {
                 $this->logVerificationFailure($vetProfile, $admin, 'approval_blocked', 'Profile incomplete', $missingFields);
-                throw new VetApprovalException('Vet profile incomplete', $missingFields);
+                throw new VetApprovalException($missingFields, 'Vet profile incomplete');
             }
 
             // Document verification check
             $missingDocs = $this->verificationService->getMissingDocuments($vetProfile);
             if (count($missingDocs) > 0) {
                 $this->logVerificationFailure($vetProfile, $admin, 'approval_blocked', 'Documents missing', $missingDocs);
-                throw new VetDocumentException('Required documents missing or corrupted', $missingDocs);
+                throw new VetDocumentException($missingDocs, 'Required documents missing or corrupted');
             }
 
             // All clear — approve
             $vetProfile->update([
-                'is_verified'      => true,
-                'vet_status'       => 'approved',
-                'rejection_reason' => null,
-                'verified_at'      => now(),
-                'verified_by'      => $admin->id,
+                'vet_status' => 'approved',
+                'verification_status' => 'approved',
             ]);
 
             // Create persistent verification record with snapshot
@@ -247,22 +292,13 @@ class VetOnboardingService
                 $vetProfile, $admin, 'approved', $notes
             );
 
-            // Audit log
-            VetVerificationLog::create([
-                'vet_profile_id' => $vetProfile->id,
-                'admin_id'       => $admin->id,
-                'action'         => 'approved',
-                'reason'         => $notes,
-                'metadata'       => [
-                    'license_number' => $vetProfile->license_number,
-                    'vet_name'       => $vetProfile->vet_name,
-                ],
-            ]);
-
             Log::channel('stack')->info('Vet approved', [
                 'vet_profile_id' => $vetProfile->id,
                 'admin_id'       => $admin->id,
             ]);
+
+            // Notify vet user about approval
+            $vetProfile->user?->notify(new VetApprovedNotification($vetProfile));
 
             return $vetProfile->fresh('user');
         });
@@ -281,28 +317,19 @@ class VetOnboardingService
             }
 
             $vetProfile->update([
-                'is_verified'      => false,
-                'vet_status'       => 'rejected',
-                'rejection_reason' => $reason,
-                'verified_at'      => null,
-                'verified_by'      => null,
+                'vet_status' => 'rejected',
+                'verification_status' => 'rejected',
             ]);
+
+            // Revoke all tokens — blocked vets must not retain API access
+            if ($vetProfile->user) {
+                $vetProfile->user->tokens()->delete();
+            }
 
             // Persistent verification record with snapshot
             $this->verificationService->createVerificationRecord(
                 $vetProfile, $admin, 'rejected', $reason
             );
-
-            VetVerificationLog::create([
-                'vet_profile_id' => $vetProfile->id,
-                'admin_id'       => $admin->id,
-                'action'         => 'rejected',
-                'reason'         => $reason,
-                'metadata'       => [
-                    'license_number' => $vetProfile->license_number,
-                    'vet_name'       => $vetProfile->vet_name,
-                ],
-            ]);
 
             Log::channel('stack')->info('Vet rejected', [
                 'vet_profile_id' => $vetProfile->id,
@@ -327,26 +354,20 @@ class VetOnboardingService
             }
 
             $vetProfile->update([
-                'vet_status'       => 'suspended',
-                'is_active'        => false,
-                'rejection_reason' => $reason,
+                'vet_status' => 'suspended',
+                'verification_status' => 'suspended',
+                'is_active'  => false,
             ]);
+
+            // Revoke all tokens — suspended vets must not retain API access
+            if ($vetProfile->user) {
+                $vetProfile->user->tokens()->delete();
+            }
 
             // Persistent verification record with snapshot
             $this->verificationService->createVerificationRecord(
                 $vetProfile, $admin, 'suspended', $reason
             );
-
-            VetVerificationLog::create([
-                'vet_profile_id' => $vetProfile->id,
-                'admin_id'       => $admin->id,
-                'action'         => 'suspended',
-                'reason'         => $reason,
-                'metadata'       => [
-                    'license_number' => $vetProfile->license_number,
-                    'vet_name'       => $vetProfile->vet_name,
-                ],
-            ]);
 
             Log::channel('stack')->info('Vet suspended', [
                 'vet_profile_id' => $vetProfile->id,
@@ -371,26 +392,15 @@ class VetOnboardingService
             }
 
             $vetProfile->update([
-                'vet_status'       => 'approved',
-                'is_active'        => true,
-                'rejection_reason' => null,
+                'vet_status' => 'approved',
+                'verification_status' => 'approved',
+                'is_active'  => true,
             ]);
 
             // Persistent verification record with snapshot
             $this->verificationService->createVerificationRecord(
                 $vetProfile, $admin, 'reactivated', $reason
             );
-
-            VetVerificationLog::create([
-                'vet_profile_id' => $vetProfile->id,
-                'admin_id'       => $admin->id,
-                'action'         => 'reactivated',
-                'reason'         => $reason,
-                'metadata'       => [
-                    'license_number' => $vetProfile->license_number,
-                    'vet_name'       => $vetProfile->vet_name,
-                ],
-            ]);
 
             Log::channel('stack')->info('Vet reactivated', [
                 'vet_profile_id' => $vetProfile->id,
@@ -406,10 +416,39 @@ class VetOnboardingService
      */
     public function getVerificationHistory(int $vetProfileId): \Illuminate\Database\Eloquent\Collection
     {
-        return VetVerificationLog::where('vet_profile_id', $vetProfileId)
+        return VetVerification::where('vet_profile_id', $vetProfileId)
             ->with('admin:id,name,email')
             ->orderByDesc('created_at')
             ->get();
+    }
+
+    /**
+     * Mark a profile as pending additional information from admin review.
+     */
+    public function requestMoreInfo(VetProfile $vetProfile, User $admin, string $reason): VetProfile
+    {
+        return DB::transaction(function () use ($vetProfile, $admin, $reason) {
+            $vetProfile = VetProfile::where('id', $vetProfile->id)->lockForUpdate()->first();
+
+            if ($vetProfile->isSuspended()) {
+                throw new \DomainException('Suspended vets cannot be moved to request-info state.');
+            }
+
+            $vetProfile->update([
+                'vet_status' => 'pending',
+                'verification_status' => 'needs_information',
+                'is_active' => false,
+            ]);
+
+            $this->verificationService->createVerificationRecord(
+                $vetProfile,
+                $admin,
+                'request_more_info',
+                $reason
+            );
+
+            return $vetProfile->fresh('user');
+        });
     }
 
     /**
@@ -419,14 +458,16 @@ class VetOnboardingService
         VetProfile $vetProfile,
         User $admin,
         string $failureType,
+        string $reason,
         array $details
     ): void {
-        VetVerificationLog::create([
-            'vet_profile_id' => $vetProfile->id,
-            'admin_id'       => $admin->id,
-            'action'         => 'approval_blocked',
-            'reason'         => "Approval blocked: {$failureType}",
-            'metadata'       => $details,
+        VetVerification::create([
+            'vet_profile_id'  => $vetProfile->id,
+            'admin_id'        => $admin->id,
+            'action'          => 'approval_blocked',
+            'reason'          => "Approval blocked: {$reason}",
+            'notes'           => $failureType,
+            'verified_fields' => $details,
         ]);
 
         Log::channel('stack')->warning('Vet approval blocked', [
@@ -437,9 +478,4 @@ class VetOnboardingService
         ]);
     }
 
-    private function extractCityFromAddress(string $address): string
-    {
-        $parts = array_map('trim', explode(',', $address));
-        return count($parts) >= 2 ? $parts[count($parts) - 2] : $parts[0];
-    }
 }

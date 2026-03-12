@@ -22,9 +22,19 @@ class SosRequest extends Model
         'emergency_type',
         'status',
         'assigned_vet_id',
+        'vet_latitude',
+        'vet_longitude',
         'acknowledged_at',
         'completed_at',
         'resolution_notes',
+        'response_time_seconds',
+        'arrival_time_seconds',
+        'vet_departed_at',
+        'vet_arrived_at',
+        'treatment_started_at',
+        'emergency_charge',
+        'distance_travelled_km',
+        'auto_expire_at',
     ];
 
     protected function casts(): array
@@ -32,8 +42,18 @@ class SosRequest extends Model
         return [
             'latitude' => 'decimal:8',
             'longitude' => 'decimal:8',
+            'vet_latitude' => 'decimal:8',
+            'vet_longitude' => 'decimal:8',
             'acknowledged_at' => 'datetime',
             'completed_at' => 'datetime',
+            'vet_departed_at' => 'datetime',
+            'vet_arrived_at' => 'datetime',
+            'treatment_started_at' => 'datetime',
+            'auto_expire_at' => 'datetime',
+            'response_time_seconds' => 'integer',
+            'arrival_time_seconds' => 'integer',
+            'emergency_charge' => 'integer',
+            'distance_travelled_km' => 'decimal:2',
         ];
     }
 
@@ -66,9 +86,29 @@ class SosRequest extends Model
         return $this->hasOne(IncidentLog::class);
     }
 
+    public function visitRecord()
+    {
+        return $this->hasOne(VisitRecord::class);
+    }
+
+    public function payment()
+    {
+        return $this->hasOne(Payment::class, 'payable_id')
+            ->where('payable_type', 'sos_request');
+    }
+
+    public function auditLogs()
+    {
+        return $this->morphMany(AuditLog::class, 'auditable');
+    }
+
     public function scopeActive($query)
     {
-        return $query->whereIn('status', ['pending', 'acknowledged', 'in_progress']);
+        return $query->whereIn('status', [
+            'pending', 'acknowledged', 'in_progress',
+            'sos_pending', 'sos_accepted', 'vet_on_the_way',
+            'arrived', 'treatment_in_progress',
+        ]);
     }
 
     public function scopeForUser($query, $userId)
@@ -83,16 +123,23 @@ class SosRequest extends Model
 
     public function isActive(): bool
     {
-        return in_array($this->status, ['pending', 'acknowledged', 'in_progress']);
+        return in_array($this->status, [
+            'pending', 'acknowledged', 'in_progress',
+            'sos_pending', 'sos_accepted', 'vet_on_the_way',
+            'arrived', 'treatment_in_progress',
+        ]);
     }
 
     public function canBeCancelled(): bool
     {
-        return in_array($this->status, ['pending', 'acknowledged']);
+        return in_array($this->status, [
+            'pending', 'acknowledged', 'in_progress',
+            'sos_pending', 'sos_accepted', 'vet_on_the_way',
+        ]);
     }
 
     public function canBeCompleted(): bool
     {
-        return in_array($this->status, ['acknowledged', 'in_progress']);
+        return in_array($this->status, ['in_progress', 'treatment_in_progress']);
     }
 }

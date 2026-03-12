@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Models\VetProfile;
 use App\Models\VetAvailability;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Str;
 
 class VetProfileSeeder extends Seeder
 {
@@ -16,47 +17,51 @@ class VetProfileSeeder extends Seeder
                 'vet_name' => 'Dr. Sarah Johnson',
                 'phone' => '+1-555-0101',
                 'email' => 'info@downtownpetemergency.com',
-                'address' => '123 Main Street',
-                'city' => 'New York',
+                'address' => '123 Main Street, New York City',
+                'city' => 'New York City',
                 'state' => 'NY',
                 'postal_code' => '10001',
                 'latitude' => 40.7128,
                 'longitude' => -74.0060,
                 'services' => ['emergency', 'surgery', 'x-ray', 'dental'],
                 'accepted_species' => ['dog', 'cat', 'rabbit'],
+                'specialization' => 'Small Animal Emergency',
+                'consultation_fee' => 1500,
+                'home_visit_fee' => 2200,
                 'is_emergency_available' => true,
                 'is_24_hours' => true,
-                'is_verified' => true,
+                'vet_status' => 'approved',
+                'verification_status' => 'approved',
                 'is_active' => true,
-                'rating' => 4.8,
-                'review_count' => 156,
             ],
             [
                 'clinic_name' => 'Riverside Animal Hospital',
                 'vet_name' => 'Dr. Michael Chen',
                 'phone' => '+1-555-0102',
                 'email' => 'care@riversideanimalhospital.com',
-                'address' => '456 River Road',
-                'city' => 'New York',
+                'address' => '456 River Road, New York City',
+                'city' => 'New York City',
                 'state' => 'NY',
                 'postal_code' => '10002',
                 'latitude' => 40.7200,
                 'longitude' => -73.9950,
                 'services' => ['general', 'vaccination', 'dental', 'grooming'],
                 'accepted_species' => ['dog', 'cat', 'bird', 'hamster'],
+                'specialization' => 'Companion Animal Practice',
+                'consultation_fee' => 1200,
+                'home_visit_fee' => 1800,
                 'is_emergency_available' => false,
                 'is_24_hours' => false,
-                'is_verified' => true,
+                'vet_status' => 'approved',
+                'verification_status' => 'approved',
                 'is_active' => true,
-                'rating' => 4.5,
-                'review_count' => 89,
             ],
             [
                 'clinic_name' => 'Pet Care Plus',
                 'vet_name' => 'Dr. Emily Rodriguez',
                 'phone' => '+1-555-0103',
                 'email' => 'hello@petcareplus.com',
-                'address' => '789 Oak Avenue',
+                'address' => '789 Oak Avenue, Brooklyn',
                 'city' => 'Brooklyn',
                 'state' => 'NY',
                 'postal_code' => '11201',
@@ -64,19 +69,21 @@ class VetProfileSeeder extends Seeder
                 'longitude' => -73.9857,
                 'services' => ['emergency', 'surgery', 'x-ray', 'ultrasound', 'lab'],
                 'accepted_species' => ['dog', 'cat', 'reptile', 'bird'],
+                'specialization' => 'Emergency and Surgery',
+                'consultation_fee' => 1400,
+                'home_visit_fee' => 2100,
                 'is_emergency_available' => true,
                 'is_24_hours' => false,
-                'is_verified' => true,
+                'vet_status' => 'approved',
+                'verification_status' => 'approved',
                 'is_active' => true,
-                'rating' => 4.9,
-                'review_count' => 234,
             ],
             [
                 'clinic_name' => 'Queens Veterinary Center',
                 'vet_name' => 'Dr. James Wilson',
                 'phone' => '+1-555-0104',
                 'email' => 'contact@queensvet.com',
-                'address' => '321 Queens Blvd',
+                'address' => '321 Queens Blvd, Queens',
                 'city' => 'Queens',
                 'state' => 'NY',
                 'postal_code' => '11375',
@@ -84,19 +91,21 @@ class VetProfileSeeder extends Seeder
                 'longitude' => -73.8317,
                 'services' => ['general', 'vaccination', 'dental', 'surgery'],
                 'accepted_species' => ['dog', 'cat'],
+                'specialization' => 'Preventive Care',
+                'consultation_fee' => 1100,
+                'home_visit_fee' => 1700,
                 'is_emergency_available' => true,
                 'is_24_hours' => true,
-                'is_verified' => true,
+                'vet_status' => 'approved',
+                'verification_status' => 'approved',
                 'is_active' => true,
-                'rating' => 4.6,
-                'review_count' => 178,
             ],
             [
                 'clinic_name' => 'Bronx Animal Care',
                 'vet_name' => 'Dr. Lisa Park',
                 'phone' => '+1-555-0105',
                 'email' => 'info@bronxanimalcare.com',
-                'address' => '555 Grand Concourse',
+                'address' => '555 Grand Concourse, Bronx',
                 'city' => 'Bronx',
                 'state' => 'NY',
                 'postal_code' => '10451',
@@ -104,20 +113,32 @@ class VetProfileSeeder extends Seeder
                 'longitude' => -73.9219,
                 'services' => ['general', 'emergency', 'x-ray', 'lab'],
                 'accepted_species' => ['dog', 'cat', 'rabbit', 'fish'],
+                'specialization' => 'Emergency Response',
+                'consultation_fee' => 1300,
+                'home_visit_fee' => 2000,
                 'is_emergency_available' => true,
                 'is_24_hours' => false,
-                'is_verified' => false,
+                'vet_status' => 'pending',
+                'verification_status' => 'pending',
                 'is_active' => true,
-                'rating' => 4.3,
-                'review_count' => 67,
             ],
         ];
 
         foreach ($vets as $vetData) {
-            $vet = VetProfile::updateOrCreate(
-                ['email' => $vetData['email']],
-                $vetData
-            );
+            // DatabaseSeeder disables model events; set UUID explicitly for new rows.
+            $vet = VetProfile::withTrashed()->firstOrNew(['email' => $vetData['email']]);
+
+            $vet->fill($vetData);
+
+            if (empty($vet->uuid)) {
+                $vet->uuid = (string) Str::uuid();
+            }
+
+            if ($vet->trashed()) {
+                $vet->restore();
+            }
+
+            $vet->save();
 
             // Add availability schedule
             $this->createAvailability($vet);
