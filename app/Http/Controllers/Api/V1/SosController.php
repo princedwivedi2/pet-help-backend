@@ -36,9 +36,11 @@ class SosController extends Controller
         try {
             $sosRequest = $this->sosService->createSos($user, $request->validated());
         } catch (\DomainException $e) {
-            return $this->validationError($e->getMessage(), [
+            $statusCode = str_contains(strtolower($e->getMessage()), 'per hour') ? 429 : 422;
+
+            return $this->error($e->getMessage(), [
                 'sos' => [$e->getMessage()],
-            ]);
+            ], $statusCode);
         } catch (\Illuminate\Database\QueryException $e) {
             report($e);
             return $this->error('Unable to create SOS request. Please try again.', null, 409);
@@ -65,10 +67,27 @@ class SosController extends Controller
     {
         $user = $request->user();
 
-        // Vets and admins see ALL active SOS; users see only their own
-        if ($user->isVet() || $user->isAdmin()) {
-            $activeSos = $this->sosService->getAllActiveSos();
+        // Vets see only nearby active SOS (within 25km); admins see all
+        if ($user->isVet()) {
+            $vetProfile = \App\Models\VetProfile::where('user_id', $user->id)->first();
+            if ($vetProfile && $vetProfile->latitude && $vetProfile->longitude) {
+                $activeSos = $this->sosService->getActiveSosNearby(
+                    (float) $vetProfile->latitude,
+                    (float) $vetProfile->longitude,
+                    25
+                );
+            } else {
+                $activeSos = $this->sosService->getAllActiveSos();
+            }
 
+            return $this->success(
+                $activeSos->isEmpty() ? 'No active SOS requests' : 'Active SOS requests retrieved',
+                ['sos_requests' => $activeSos]
+            );
+        }
+
+        if ($user->isAdmin()) {
+            $activeSos = $this->sosService->getAllActiveSos();
             return $this->success(
                 $activeSos->isEmpty() ? 'No active SOS requests' : 'Active SOS requests retrieved',
                 ['sos_requests' => $activeSos]
@@ -98,7 +117,7 @@ class SosController extends Controller
         $isAdmin = $user->isAdmin();
 
         if (!$isOwner && !$isVet && !$isAdmin) {
-            return $this->forbidden('You do not have permission to update this SOS request.');
+            return $this->notFound('SOS request not found');
         }
 
         $newStatus = $request->status;
@@ -116,12 +135,14 @@ class SosController extends Controller
             if ($request->emergency_charge) $extra['emergency_charge'] = (float) $request->emergency_charge;
             if ($request->distance_travelled_km) $extra['distance_travelled_km'] = (float) $request->distance_travelled_km;
 
-            // If vet is accepting, attach their profile
+            // If vet is accepting, attach their profile and response type
             if (in_array($newStatus, ['sos_accepted', 'acknowledged']) && $isVet) {
                 $vetProfile = \App\Models\VetProfile::where('user_id', $user->id)->first();
                 if ($vetProfile) {
                     $extra['vet_profile_id'] = $vetProfile->id;
                 }
+                if ($request->response_type) $extra['response_type'] = $request->response_type;
+                if ($request->estimated_arrival_at) $extra['estimated_arrival_at'] = $request->estimated_arrival_at;
             }
 
             $sosRequest = $this->sosService->updateStatus(

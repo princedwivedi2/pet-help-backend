@@ -21,7 +21,7 @@ class VetApplyRequest extends ApiFormRequest
             'password'             => ['required', 'string', 'min:8', 'regex:/[A-Z]/', 'regex:/[0-9]/', 'confirmed'],
             'phone_number'         => ['required_without:phone', 'nullable', 'string', 'max:20', 'regex:/^[\+]?[0-9\s\-\(\)]{7,20}$/'],
             'phone'                => ['required_without:phone_number', 'nullable', 'string', 'max:20', 'regex:/^[\+]?[0-9\s\-\(\)]{7,20}$/'],
-            'profile_photo'        => ['required', 'file', 'mimes:jpg,jpeg,png', 'max:5120'],
+            'profile_photo'        => ['required', 'string', 'max:500'],
 
             // Clinic info
             'clinic_name'          => ['required', 'string', 'max:200'],

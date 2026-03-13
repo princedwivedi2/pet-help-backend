@@ -71,6 +71,8 @@ return new class extends Migration
 
     public function up(): void
     {
+        if (DB::connection()->getDriverName() === 'sqlite') return;
+
         foreach ($this->tables as $table) {
             $engine = DB::selectOne("SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?", [$table]);
 

@@ -18,7 +18,11 @@ return new class extends Migration
             $table->string('address', 300)->nullable();
             $table->text('description');
             $table->enum('emergency_type', ['injury', 'illness', 'poisoning', 'accident', 'breathing', 'seizure', 'other'])->default('other');
-            $table->enum('status', ['pending', 'acknowledged', 'in_progress', 'completed', 'cancelled'])->default('pending');
+            $table->enum('status', [
+                'pending', 'acknowledged', 'in_progress', 'completed', 'cancelled',
+                'sos_pending', 'sos_accepted', 'vet_on_the_way', 'arrived',
+                'sos_in_progress', 'treatment_in_progress', 'sos_completed', 'sos_cancelled', 'expired',
+            ])->default('pending');
             $table->foreignId('assigned_vet_id')->nullable()->constrained('vet_profiles')->onDelete('set null');
             $table->timestamp('acknowledged_at')->nullable();
             $table->timestamp('completed_at')->nullable();

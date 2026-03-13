@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\VetProfile;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\DB;
 
 class VetSearchService
 {
@@ -22,6 +23,9 @@ class VetSearchService
         ?string $specialization = null,
         ?float $minRating = null
     ): Collection {
+        $distanceExpr = $this->haversineFormula($latitude, $longitude);
+        $isSqlite = DB::getDriverName() === 'sqlite';
+
         $query = $this->baseApprovedQuery($emergencyOnly, $availableOnly, $specialization, $minRating)
             ->whereNotNull('latitude')
             ->whereNotNull('longitude')
@@ -30,8 +34,13 @@ class VetSearchService
                   ->orWhere('longitude', '!=', 0);
             })
             ->select('vet_profiles.*')
-            ->selectRaw($this->haversineFormula($latitude, $longitude) . ' AS distance_km')
-            ->having('distance_km', '<=', $radiusKm);
+            ->selectRaw($distanceExpr . ' AS distance_km');
+
+        if ($isSqlite) {
+            $query->whereRaw($distanceExpr . ' <= ?', [$radiusKm]);
+        } else {
+            $query->having('distance_km', '<=', $radiusKm);
+        }
 
         if ($city) {
             $escapedCity = $this->escapeLike($city);
@@ -79,6 +88,9 @@ class VetSearchService
 
         $nearbyVets = collect();
         if ($latitude !== null && $longitude !== null) {
+            $distanceExpr = $this->haversineFormula($latitude, $longitude);
+            $isSqlite = DB::getDriverName() === 'sqlite';
+
             $nearbyVets = (clone $base)
                 ->whereNotNull('latitude')
                 ->whereNotNull('longitude')
@@ -87,11 +99,17 @@ class VetSearchService
                       ->orWhere('longitude', '!=', 0);
                 })
                 ->select('vet_profiles.*')
-                ->selectRaw($this->haversineFormula($latitude, $longitude) . ' AS distance_km')
-                ->having('distance_km', '<=', $radiusKm)
+                ->selectRaw($distanceExpr . ' AS distance_km')
                 ->orderBy('distance_km')
-                ->limit($limit)
-                ->get();
+                ->limit($limit);
+
+            if ($isSqlite) {
+                $nearbyVets->whereRaw($distanceExpr . ' <= ?', [$radiusKm]);
+            } else {
+                $nearbyVets->having('distance_km', '<=', $radiusKm);
+            }
+
+            $nearbyVets = $nearbyVets->get();
         }
 
         $cityName = trim((string) $city);
@@ -133,12 +151,20 @@ class VetSearchService
 
     private function haversineFormula(float $latitude, float $longitude): string
     {
-        // Use number_format to avoid locale-dependent decimal separators
         $lat = number_format($latitude, 8, '.', '');
         $lng = number_format($longitude, 8, '.', '');
         $radius = self::EARTH_RADIUS_KM;
 
-        // LEAST/GREATEST clamp guards against floating-point rounding pushing ACOS arg outside [-1,1]
+        $driver = DB::getDriverName();
+
+        if ($driver === 'sqlite') {
+            // SQLite in CI may lack trig functions (ACOS/RADIANS); use lightweight approximate distance expression.
+            return "(
+                (ABS(latitude - {$lat}) + ABS(longitude - {$lng})) * 111
+            )";
+        }
+
+        // MySQL / PostgreSQL use LEAST/GREATEST
         return "(
             {$radius} * ACOS(
                 LEAST(1, GREATEST(-1,

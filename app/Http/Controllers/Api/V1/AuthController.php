@@ -119,7 +119,14 @@ class AuthController extends Controller
      */
     public function logout(Request $request): JsonResponse
     {
-        $request->user()->currentAccessToken()->delete();
+        $user = $request->user();
+        $currentToken = $user->currentAccessToken();
+
+        if ($currentToken) {
+            $currentToken->delete();
+        } else {
+            $user->tokens()->delete();
+        }
 
         return $this->success('Logout successful');
     }
@@ -229,8 +236,13 @@ class AuthController extends Controller
 
         $user->forceFill(['password' => $request->password])->save();
 
-        // Revoke all other tokens
-        $user->tokens()->where('id', '!=', $user->currentAccessToken()->id)->delete();
+        // Revoke all other tokens (keep current session)
+        $currentToken = $user->currentAccessToken();
+        if ($currentToken) {
+            $user->tokens()->where('id', '!=', $currentToken->id)->delete();
+        } else {
+            $user->tokens()->delete();
+        }
 
         return $this->success('Password changed successfully');
     }

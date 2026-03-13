@@ -256,6 +256,9 @@ class PaymentService
         if ($payment->payable_type === 'appointment' || $payment->payable_type === \App\Models\Appointment::class) {
             \App\Models\Appointment::where('id', $payment->payable_id)
                 ->update(['payment_status' => 'paid']);
+        } elseif ($payment->payable_type === 'sos_request' || $payment->payable_type === \App\Models\SosRequest::class) {
+            \App\Models\SosRequest::where('id', $payment->payable_id)
+                ->update(['emergency_charge' => $payment->amount]);
         }
     }
 

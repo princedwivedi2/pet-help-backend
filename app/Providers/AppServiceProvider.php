@@ -50,6 +50,8 @@ class AppServiceProvider extends ServiceProvider
             'appointment' => Appointment::class,
             'sos_request' => SosRequest::class,
             'user' => User::class,
+            'community_post' => CommunityPost::class,
+            'community_reply' => CommunityReply::class,
         ]);
 
         Gate::policy(Pet::class, PetPolicy::class);

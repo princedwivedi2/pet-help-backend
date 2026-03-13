@@ -47,7 +47,7 @@ class SosTest extends TestCase
 
         $this->assertDatabaseHas('sos_requests', [
             'user_id' => $user->id,
-            'status' => 'pending',
+            'status' => 'sos_pending',
         ]);
 
         // Verify incident log was auto-created

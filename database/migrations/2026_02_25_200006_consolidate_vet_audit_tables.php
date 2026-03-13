@@ -25,6 +25,8 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (DB::connection()->getDriverName() === 'sqlite') return;
+
         // Step 1: Add 'applied' and 'approval_blocked' to vet_verifications action enum
         DB::statement("ALTER TABLE vet_verifications MODIFY COLUMN action ENUM('applied','approved','rejected','suspended','reactivated','approval_blocked') NOT NULL");
 
@@ -39,7 +41,6 @@ return new class extends Migration
         });
 
         // Step 4: Migrate existing vet_verification_logs data → vet_verifications
-        // Only rows that don't already have a matching record
         DB::statement("
             INSERT INTO vet_verifications (uuid, vet_profile_id, admin_id, action, reason, notes, verified_fields, created_at, updated_at)
             SELECT
@@ -62,7 +63,6 @@ return new class extends Migration
         ");
 
         // Step 5: Drop the FK on vet_verification_logs → vet_profiles
-        // (it was just created in migration 200005, but we're deprecating this table)
         if ($this->foreignKeyExists('vet_verification_logs', 'vet_verification_logs_vet_profile_id_foreign')) {
             Schema::table('vet_verification_logs', function (Blueprint $table) {
                 $table->dropForeign(['vet_profile_id']);
@@ -74,27 +74,25 @@ return new class extends Migration
             });
         }
 
-        // Step 6: Rename deprecated table (keeps data accessible but clearly marked)
+        // Step 6: Rename deprecated table
         Schema::rename('vet_verification_logs', '_deprecated_vet_verification_logs');
     }
 
     public function down(): void
     {
-        // Restore the old table name
+        if (DB::connection()->getDriverName() === 'sqlite') return;
+
         Schema::rename('_deprecated_vet_verification_logs', 'vet_verification_logs');
 
-        // Re-add FKs
         Schema::table('vet_verification_logs', function (Blueprint $table) {
             $table->foreign('vet_profile_id')->references('id')->on('vet_profiles')->onDelete('cascade');
             $table->foreign('admin_id')->references('id')->on('users')->onDelete('set null');
         });
 
-        // Remove reason column
         Schema::table('vet_verifications', function (Blueprint $table) {
             $table->dropColumn('reason');
         });
 
-        // Revert enum
         DB::statement("ALTER TABLE vet_verifications MODIFY COLUMN action ENUM('approved','rejected','suspended','reactivated') NOT NULL");
     }
 

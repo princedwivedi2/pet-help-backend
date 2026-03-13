@@ -16,8 +16,10 @@ return new class extends Migration
             $table->foreignId('vet_profile_id')->constrained()->onDelete('cascade');
             $table->foreignId('pet_id')->nullable()->constrained()->onDelete('set null');
 
-            $table->enum('status', ['pending', 'confirmed', 'completed', 'cancelled', 'no_show'])
-                ->default('pending');
+            $table->enum('status', [
+                'pending', 'confirmed', 'completed', 'cancelled', 'no_show',
+                'accepted', 'rejected', 'cancelled_by_user', 'cancelled_by_vet', 'in_progress',
+            ])->default('pending');
 
             $table->dateTime('scheduled_at');
             $table->unsignedSmallInteger('duration_minutes')->default(30);
@@ -32,8 +34,9 @@ return new class extends Migration
             $table->timestamps();
             $table->softDeletes();
 
-            // Prevent double-booking: unique slot per vet
-            $table->unique(['vet_profile_id', 'scheduled_at'], 'unique_vet_slot');
+            // Prevent double-booking: unique active slot per vet
+            $table->timestamp('cancelled_at_slot_release')->nullable();
+            $table->unique(['vet_profile_id', 'scheduled_at', 'cancelled_at_slot_release'], 'unique_active_vet_slot');
 
             $table->index(['user_id', 'status']);
             $table->index(['vet_profile_id', 'status']);

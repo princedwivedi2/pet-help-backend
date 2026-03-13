@@ -36,6 +36,8 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (DB::connection()->getDriverName() === 'sqlite') return;
+
         // Step 1: Sync existing data before any column removal (idempotent — skips if columns already dropped)
         if (Schema::hasColumn('vet_profiles', 'is_verified')) {
             DB::statement("UPDATE vet_profiles SET is_verified = 1 WHERE vet_status = 'approved'");

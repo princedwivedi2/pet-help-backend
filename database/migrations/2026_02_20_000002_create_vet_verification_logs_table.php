@@ -13,7 +13,7 @@ return new class extends Migration
             $table->uuid('uuid')->unique();
             $table->foreignId('vet_profile_id')->constrained()->onDelete('cascade');
             $table->foreignId('admin_id')->constrained('users')->onDelete('cascade');
-            $table->enum('action', ['approved', 'rejected']);
+            $table->enum('action', ['approved', 'rejected', 'suspended', 'reactivated', 'approval_blocked', 'applied', 'request_more_info']);
             $table->text('reason')->nullable();
             $table->json('metadata')->nullable();
             $table->timestamps();

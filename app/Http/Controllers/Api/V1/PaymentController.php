@@ -44,6 +44,10 @@ class PaymentController extends Controller
                 return $this->forbidden('You can only pay for your own appointments.');
             }
             $amount = $payable->fee_amount ?? $payable->vetProfile?->consultation_fee ?? 500;
+            // Use home_visit_fee for home visit appointments
+            if ($payable->appointment_type === 'home_visit' && $payable->vetProfile?->home_visit_fee) {
+                $amount = $payable->fee_amount ?? $payable->vetProfile->home_visit_fee;
+            }
         } else {
             $payable = SosRequest::where('uuid', $request->payable_uuid)->first();
             if (!$payable) {
@@ -226,7 +230,7 @@ class PaymentController extends Controller
         }
 
         try {
-            $payment = $this->paymentService->refund($payment, $request->reason);
+            $payment = $this->paymentService->refund($payment, null, $request->reason);
 
             return $this->success('Refund initiated', ['payment' => $payment]);
         } catch (\DomainException $e) {

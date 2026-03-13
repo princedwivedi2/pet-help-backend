@@ -58,6 +58,19 @@ class AppointmentService
                 throw new \DomainException('Home visit requires an address.');
             }
 
+            // Validate appointment_type against vet's consultation_types
+            if (!empty($vetProfile->consultation_types) && is_array($vetProfile->consultation_types)) {
+                if (!in_array($appointmentType, $vetProfile->consultation_types)) {
+                    throw new \DomainException("This veterinarian does not offer {$appointmentType} consultations.");
+                }
+            }
+
+            // Determine fee based on appointment type
+            $feeAmount = $vetProfile->consultation_fee;
+            if ($appointmentType === 'home_visit' && $vetProfile->home_visit_fee) {
+                $feeAmount = $vetProfile->home_visit_fee;
+            }
+
             // Validate pet is required
             if (empty($data['pet_id'])) {
                 throw new \DomainException('A pet must be selected for the appointment.');
@@ -82,7 +95,7 @@ class AppointmentService
                 'home_address'     => $data['home_address'] ?? null,
                 'home_latitude'    => $data['home_latitude'] ?? null,
                 'home_longitude'   => $data['home_longitude'] ?? null,
-                'fee_amount'       => $vetProfile->consultation_fee,
+                'fee_amount'       => $feeAmount,
                 'status'           => 'pending',
             ]);
 

@@ -9,6 +9,8 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (DB::connection()->getDriverName() === 'sqlite') return;
+
         // Add 'applied' action to vet_verification_logs
         DB::statement("ALTER TABLE vet_verification_logs MODIFY COLUMN action ENUM('applied','approved','rejected','suspended','reactivated') NOT NULL");
 
@@ -20,6 +22,8 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (DB::connection()->getDriverName() === 'sqlite') return;
+
         DB::statement("ALTER TABLE vet_verification_logs MODIFY COLUMN action ENUM('approved','rejected','suspended','reactivated') NOT NULL");
 
         Schema::table('vet_verification_logs', function (Blueprint $table) {
