@@ -12,8 +12,10 @@ use App\Services\VetProfileCompletionService;
 use App\Services\VetOnboardingService;
 use App\Traits\ApiResponse;
 use Illuminate\Database\QueryException;
+use Illuminate\Http\BinaryFileResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class VetOnboardingController extends Controller
 {
@@ -95,6 +97,7 @@ class VetOnboardingController extends Controller
         return $this->success('Vet profile retrieved successfully', [
             'vet_profile' => $vetProfile,
             'profile_status' => $this->vetProfileCompletionService->buildCompletionPayload($vetProfile),
+            'document_status' => $this->buildDocumentStatus($vetProfile),
         ]);
     }
 
@@ -136,6 +139,51 @@ class VetOnboardingController extends Controller
     }
 
     /**
+     * View an uploaded verification document.
+     *
+     * GET /api/v1/vet/documents/{type}
+     */
+    public function viewDocument(Request $request, string $type): JsonResponse|BinaryFileResponse
+    {
+        $fieldMap = [
+            'license' => 'license_document_url',
+            'degree' => 'degree_certificate_url',
+            'id_proof' => 'government_id_url',
+        ];
+
+        if (!isset($fieldMap[$type])) {
+            return $this->validationError('Invalid document type.', [
+                'type' => ['Allowed values: license, degree, id_proof.'],
+            ]);
+        }
+
+        $user = $request->user();
+        $vetProfile = VetProfile::where('user_id', $user->id)->first();
+
+        if (!$vetProfile) {
+            return $this->notFound('Vet profile not found.');
+        }
+
+        $path = (string) ($vetProfile->{$fieldMap[$type]} ?? '');
+        if ($path === '') {
+            return $this->notFound('Document not uploaded yet.');
+        }
+
+        $disk = $this->resolveDocumentDisk($path);
+        if (!$disk) {
+            return $this->notFound('Document file not found in storage.');
+        }
+
+        $absolutePath = Storage::disk($disk)->path($path);
+        $mime = Storage::disk($disk)->mimeType($path) ?: 'application/octet-stream';
+
+        return response()->file($absolutePath, [
+            'Content-Type' => $mime,
+            'Content-Disposition' => 'inline; filename="' . basename($path) . '"',
+        ]);
+    }
+
+    /**
      * Update the authenticated vet's profile.
      *
      * PUT /api/v1/vet/profile
@@ -167,9 +215,12 @@ class VetOnboardingController extends Controller
             'specialization' => $payload['specialization'] ?? $vetProfile->specialization,
             'services' => $payload['services'],
             'accepted_species' => $payload['accepted_species'],
+            'consultation_types' => $payload['consultation_types'] ?? $vetProfile->consultation_types,
             'working_hours' => $payload['working_hours'],
             'consultation_fee' => $payload['consultation_fee'],
             'home_visit_fee' => $payload['home_visit_fee'] ?? null,
+            'online_fee' => $payload['online_fee'] ?? null,
+            'max_home_visit_km' => $payload['max_home_visit_km'] ?? null,
             'verification_documents' => $payload['verification_documents'] ?? null,
             'is_emergency_available' => $payload['is_emergency_available'] ?? $vetProfile->is_emergency_available,
             'is_24_hours' => $payload['is_24_hours'] ?? $vetProfile->is_24_hours,
@@ -329,5 +380,44 @@ class VetOnboardingController extends Controller
         return $this->success('Status updated', [
             'availability_status' => $vetProfile->availability_status,
         ]);
+    }
+
+    private function buildDocumentStatus(VetProfile $vetProfile): array
+    {
+        $items = [
+            'license' => $vetProfile->license_document_url,
+            'degree' => $vetProfile->degree_certificate_url,
+            'id_proof' => $vetProfile->government_id_url,
+        ];
+
+        $result = [];
+        foreach ($items as $type => $path) {
+            $resolvedPath = (string) ($path ?? '');
+            $disk = $this->resolveDocumentDisk($resolvedPath);
+            $result[$type] = [
+                'uploaded' => $disk !== null,
+                'path' => $resolvedPath ?: null,
+            ];
+        }
+
+        return $result;
+    }
+
+    private function resolveDocumentDisk(string $path): ?string
+    {
+        if ($path === '') {
+            return null;
+        }
+
+        if (Storage::disk('local')->exists($path)) {
+            return 'local';
+        }
+
+        // Backward compatibility for legacy uploads.
+        if (Storage::disk('public')->exists($path)) {
+            return 'public';
+        }
+
+        return null;
     }
 }

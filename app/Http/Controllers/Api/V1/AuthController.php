@@ -40,16 +40,12 @@ class AuthController extends Controller
             return $this->error('Registration failed. This email may already be in use.', null, 409);
         }
 
-        // Auto-verify email for development/testing
-        // TODO: Remove this in production and uncomment the event below
-        $user->markEmailAsVerified();
-
         // Fire Registered event (sends verification email)
-        // event(new Registered($user));
+        event(new Registered($user));
 
         $token = $user->createToken('mobile-app')->plainTextToken;
 
-        return $this->created('User registered successfully.', [
+        return $this->created('User registered successfully. Please verify your email.', [
             'user' => $user,
             'token' => $token,
         ]);
@@ -72,36 +68,45 @@ class AuthController extends Controller
             ]);
         }
 
-        // Block non-approved vets from logging in
+        $loginNotice = null;
+        $vetMeta = [];
+
         if ($user->isVet()) {
             $vetProfile = $user->vetProfile;
 
-            if (!$vetProfile || !$vetProfile->isApproved()) {
-                $status = $vetProfile?->vet_status ?? 'pending';
-                $messages = [
-                    'pending'   => 'Your vet profile is pending admin approval.',
-                    'rejected'  => 'Your vet profile has been rejected. Please contact support.',
-                    'suspended' => 'Your vet account has been suspended. Please contact support.',
-                ];
-
-                return $this->forbidden($messages[$status] ?? 'Your vet account is not active.');
+            if (!$vetProfile) {
+                return $this->forbidden('Vet profile not found. Please complete onboarding.');
             }
-        }
 
-        // Auto-verify email for development/testing
-        // TODO: Remove this in production
-        if (!$user->hasVerifiedEmail()) {
-            $user->markEmailAsVerified();
+            $vetMeta = [
+                'vet_status' => $vetProfile->vet_status,
+                'verification_status' => $vetProfile->verification_status ?? $vetProfile->vet_status,
+            ];
+
+            // Allow login for pending vets so they can finish onboarding, but surface a clear notice
+            if (!$vetProfile->isApproved()) {
+                $loginNotice = 'Vet account is not approved yet. Appointment actions stay disabled until admin approval.';
+            }
         }
 
         $user->forceFill(['last_login_at' => now()])->save();
 
         $token = $user->createToken('mobile-app')->plainTextToken;
 
-        return $this->success('Login successful', [
+        $payload = [
             'user' => $user,
             'token' => $token,
-        ]);
+        ];
+
+        if (!empty($vetMeta)) {
+            $payload['vet'] = $vetMeta;
+        }
+
+        if ($loginNotice) {
+            $payload['login_notice'] = $loginNotice;
+        }
+
+        return $this->success('Login successful', $payload);
     }
 
     /**
@@ -258,6 +263,9 @@ class AuthController extends Controller
         $user = $request->user();
         $data = $request->validated();
 
+        // CRIT-03: Explicitly strip role and other sensitive fields from profile updates
+        unset($data['role'], $data['email_verified_at'], $data['password']);
+
         // Handle avatar upload
         if ($request->hasFile('avatar')) {
             $path = $request->file('avatar')->store('avatars', 'public');
@@ -287,6 +295,21 @@ class AuthController extends Controller
             return $this->validationError('Password is incorrect', [
                 'password' => ['The provided password does not match.'],
             ]);
+        }
+
+        // MED-04: Block deletion if user has active appointments, SOS, or payments
+        $activeAppointments = $user->appointments()
+            ->whereIn('status', ['pending', 'accepted', 'confirmed', 'in_progress'])
+            ->exists();
+        if ($activeAppointments) {
+            return $this->error('Cannot delete account with active appointments. Please cancel or complete them first.', null, 422);
+        }
+
+        $activeSos = $user->sosRequests()
+            ->whereIn('status', ['sos_pending', 'sos_accepted', 'vet_on_the_way', 'arrived', 'sos_in_progress', 'pending', 'acknowledged', 'in_progress'])
+            ->exists();
+        if ($activeSos) {
+            return $this->error('Cannot delete account with active SOS requests. Please cancel or complete them first.', null, 422);
         }
 
         // Revoke all tokens

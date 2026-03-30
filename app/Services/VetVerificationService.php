@@ -100,7 +100,7 @@ class VetVerificationService
         // Check required documents
         foreach (self::REQUIRED_DOCUMENTS as $docType => $profileField) {
             $path = $profileField ? $vetProfile->{$profileField} : null;
-            $map[$docType] = $path && Storage::disk('public')->exists($path);
+            $map[$docType] = $path && $this->documentExists((string) $path);
         }
 
         // Check optional documents via verification logs (documents uploaded post-apply)
@@ -159,7 +159,7 @@ class VetVerificationService
                 continue;
             }
 
-            if (!Storage::disk('public')->exists($path)) {
+            if (!$this->documentExists((string) $path)) {
                 $missing[] = $docType;
 
                 Log::warning('Vet document file missing from storage', [
@@ -171,6 +171,16 @@ class VetVerificationService
         }
 
         return $missing;
+    }
+
+    private function documentExists(string $path): bool
+    {
+        if ($path === '') {
+            return false;
+        }
+
+        // New uploads are stored on local disk; retain public for old records.
+        return Storage::disk('local')->exists($path) || Storage::disk('public')->exists($path);
     }
 
     // ─── Approval Eligibility ───────────────────────────────────────

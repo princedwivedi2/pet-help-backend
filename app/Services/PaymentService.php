@@ -158,9 +158,18 @@ class PaymentService
 
             $refundAmount = $amount ?? $payment->amount;
 
-            // Call Razorpay refund API
+            // Call Razorpay refund API FIRST — only update status after confirmation (MED-08)
             if ($payment->razorpay_payment_id) {
-                $this->createRazorpayRefund($payment->razorpay_payment_id, $refundAmount);
+                try {
+                    $this->createRazorpayRefund($payment->razorpay_payment_id, $refundAmount);
+                } catch (\Throwable $e) {
+                    // Razorpay refund failed — do NOT update payment status
+                    Log::error('Razorpay refund failed, payment status unchanged', [
+                        'payment_uuid' => $payment->uuid,
+                        'error' => $e->getMessage(),
+                    ]);
+                    throw $e;
+                }
             }
 
             $status = $refundAmount >= $payment->amount ? 'refunded' : 'partially_refunded';
@@ -191,22 +200,35 @@ class PaymentService
         int $amount,
         string $paymentModel = 'platform_fee'
     ): Payment {
-        $fees = $this->calculateFees($amount, $paymentModel);
+        return DB::transaction(function () use ($payableType, $payableId, $userId, $vetProfileId, $amount, $paymentModel) {
+            // Prevent duplicate offline payments for same payable (HIGH-02)
+            $existing = Payment::where('payable_type', $payableType)
+                ->where('payable_id', $payableId)
+                ->whereIn('payment_status', ['pending', 'created', 'authorized', 'captured', 'paid'])
+                ->lockForUpdate()
+                ->first();
 
-        return Payment::create([
-            'payable_type' => $payableType,
-            'payable_id' => $payableId,
-            'user_id' => $userId,
-            'vet_profile_id' => $vetProfileId,
-            'amount' => $amount,
-            'platform_fee' => $fees['platform_fee'],
-            'commission_amount' => $fees['commission'],
-            'vet_payout_amount' => $fees['vet_payout'],
-            'payment_model' => $paymentModel,
-            'payment_mode' => 'offline',
-            'payment_status' => 'paid',
-            'paid_at' => now(),
-        ]);
+            if ($existing) {
+                throw new \DomainException('A payment already exists for this booking.');
+            }
+
+            $fees = $this->calculateFees($amount, $paymentModel);
+
+            return Payment::create([
+                'payable_type' => $payableType,
+                'payable_id' => $payableId,
+                'user_id' => $userId,
+                'vet_profile_id' => $vetProfileId,
+                'amount' => $amount,
+                'platform_fee' => $fees['platform_fee'],
+                'commission_amount' => $fees['commission'],
+                'vet_payout_amount' => $fees['vet_payout'],
+                'payment_model' => $paymentModel,
+                'payment_mode' => 'offline',
+                'payment_status' => 'paid',
+                'paid_at' => now(),
+            ]);
+        });
     }
 
     // ─── Wallet ─────────────────────────────────────────────────────
@@ -234,19 +256,47 @@ class PaymentService
 
     private function debitVetWallet(Payment $payment, int $refundAmount): void
     {
-        $wallet = VetWallet::where('vet_profile_id', $payment->vet_profile_id)->first();
+        // CRIT-01 FIX: Lock wallet row to prevent race condition on concurrent refunds
+        $wallet = VetWallet::where('vet_profile_id', $payment->vet_profile_id)
+            ->lockForUpdate()
+            ->first();
         if (!$wallet) return;
 
         $debitAmount = min($refundAmount, $wallet->balance);
+
+        // CRIT-01: Warn and audit when refund exceeds wallet balance
+        if ($refundAmount > $wallet->balance) {
+            $deficit = $refundAmount - $wallet->balance;
+            Log::warning('Vet wallet balance insufficient for full refund debit — platform absorbs deficit', [
+                'payment_uuid' => $payment->uuid,
+                'vet_profile_id' => $payment->vet_profile_id,
+                'refund_amount' => $refundAmount,
+                'wallet_balance' => $wallet->balance,
+                'deficit' => $deficit,
+            ]);
+
+            $this->auditService->log(
+                null,
+                Payment::class,
+                $payment->id,
+                'refund_deficit',
+                null,
+                ['deficit' => $deficit, 'wallet_balance' => $wallet->balance, 'refund_amount' => $refundAmount],
+                "Wallet deficit: platform absorbed ₹{$deficit}"
+            );
+        }
+
         $wallet->decrement('balance', $debitAmount);
-        $wallet->decrement('pending_payout', min($debitAmount, $wallet->pending_payout));
+        // MED-09 FIX: Wallet already locked, use current value to avoid race
+        $pendingDebit = min($debitAmount, $wallet->pending_payout);
+        $wallet->decrement('pending_payout', $pendingDebit);
 
         WalletTransaction::create([
             'vet_profile_id' => $payment->vet_profile_id,
             'payment_id' => $payment->id,
             'type' => 'refund_debit',
             'amount' => $debitAmount,
-            'balance_after' => $wallet->fresh()->balance,
+            'balance_after' => $wallet->balance - $debitAmount,
             'description' => "Refund for payment #{$payment->uuid}",
         ]);
     }
@@ -254,8 +304,12 @@ class PaymentService
     private function updatePayableStatus(Payment $payment): void
     {
         if ($payment->payable_type === 'appointment' || $payment->payable_type === \App\Models\Appointment::class) {
+            // MED-03 FIX: Also set payment_mode on the appointment
             \App\Models\Appointment::where('id', $payment->payable_id)
-                ->update(['payment_status' => 'paid']);
+                ->update([
+                    'payment_status' => 'paid',
+                    'payment_mode' => $payment->payment_mode,
+                ]);
         } elseif ($payment->payable_type === 'sos_request' || $payment->payable_type === \App\Models\SosRequest::class) {
             \App\Models\SosRequest::where('id', $payment->payable_id)
                 ->update(['emergency_charge' => $payment->amount]);

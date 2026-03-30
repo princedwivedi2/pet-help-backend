@@ -195,6 +195,7 @@ Route::middleware(['auth:sanctum', 'verified', 'role:vet'])->group(function () {
     Route::put('vet/profile', [VetOnboardingController::class, 'updateProfile']);
     Route::post('vet/profile', [VetOnboardingController::class, 'updateProfile']);
     Route::post('vet/documents', [VetOnboardingController::class, 'uploadDocument']);
+    Route::get('vet/documents/{type}', [VetOnboardingController::class, 'viewDocument']);
     Route::put('vet/status', [VetOnboardingController::class, 'updateStatus']);
     Route::get('vet/availabilities', [VetOnboardingController::class, 'availabilities']);
     Route::post('vet/availabilities', [VetOnboardingController::class, 'storeAvailability']);

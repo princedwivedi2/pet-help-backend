@@ -45,6 +45,10 @@ class ReviewController extends Controller
             if ($appointment->user_id !== $user->id) {
                 return $this->forbidden('You can only review your own appointments.');
             }
+            // CRIT-02: Only completed appointments can be reviewed
+            if ($appointment->status !== 'completed') {
+                return $this->error('Reviews can only be submitted for completed appointments.', null, 422);
+            }
             $appointmentId = $appointment->id;
             $vetProfileId = $appointment->vet_profile_id;
         } else {
@@ -54,6 +58,10 @@ class ReviewController extends Controller
             }
             if ($sosRequest->user_id !== $user->id) {
                 return $this->forbidden('You can only review your own SOS requests.');
+            }
+            // CRIT-02: Only completed SOS requests can be reviewed
+            if (!in_array($sosRequest->status, ['completed', 'sos_completed'])) {
+                return $this->error('Reviews can only be submitted for completed SOS requests.', null, 422);
             }
             $sosRequestId = $sosRequest->id;
             $vetProfileId = $sosRequest->assigned_vet_id;
@@ -149,8 +157,14 @@ class ReviewController extends Controller
     public function flag(Request $request, string $uuid): JsonResponse
     {
         $request->validate([
-            'reason' => 'nullable|string|max:500',
+            'reason' => 'required|string|max:500', // MED-06: Reason is now required
         ]);
+
+        // MED-03: Only vets (for their own reviews) and admins can flag
+        $user = $request->user();
+        if (!$user->isVet() && !$user->isAdmin()) {
+            return $this->forbidden('Only vets and admins can flag reviews.');
+        }
 
         $review = \App\Models\Review::where('uuid', $uuid)->first();
 
@@ -158,8 +172,16 @@ class ReviewController extends Controller
             return $this->notFound('Review not found');
         }
 
+        // If vet, must be for their own profile
+        if ($user->isVet()) {
+            $vetProfile = VetProfile::where('user_id', $user->id)->first();
+            if (!$vetProfile || $review->vet_profile_id !== $vetProfile->id) {
+                return $this->forbidden('You can only flag reviews for your own profile.');
+            }
+        }
+
         try {
-            $review = $this->reviewService->flagReview($review, $request->reason, $request->user()->id);
+            $review = $this->reviewService->flagReview($review, $request->reason, $user->id);
 
             return $this->success('Review flagged for moderation', ['review' => $review]);
         } catch (\DomainException $e) {

@@ -104,12 +104,18 @@ class VetSearchService
                 ->limit($limit);
 
             if ($isSqlite) {
-                $nearbyVets->whereRaw($distanceExpr . ' <= ?', [$radiusKm]);
+                // $nearbyVets->whereRaw($distanceExpr . ' <= ?', [$radiusKm]);
             } else {
                 $nearbyVets->having('distance_km', '<=', $radiusKm);
             }
 
             $nearbyVets = $nearbyVets->get();
+
+            if ($isSqlite) {
+                $nearbyVets = $nearbyVets->filter(function ($vet) use ($radiusKm) {
+                    return $vet->distance_km <= $radiusKm;
+                });
+            }
         }
 
         $cityName = trim((string) $city);

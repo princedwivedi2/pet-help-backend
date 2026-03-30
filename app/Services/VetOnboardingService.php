@@ -127,7 +127,7 @@ class VetOnboardingService
         } catch (\Throwable $e) {
             // DB transaction failed — clean up orphaned files
             foreach ($documentPaths as $path) {
-                Storage::disk('public')->delete($path);
+                Storage::disk('local')->delete($path);
             }
             throw $e;
         }
@@ -157,7 +157,8 @@ class VetOnboardingService
             if ($file instanceof UploadedFile && $file->isValid()) {
                 $extension = $file->getClientOriginalExtension();
                 $filename  = Str::uuid()->toString() . '.' . $extension;
-                $path      = $file->storeAs('vet-documents', $filename, 'public');
+                // CRIT-04 FIX: Store vet documents on private 'local' disk, not 'public'
+                $path      = $file->storeAs('vet-documents', $filename, 'local');
                 $paths[]   = $path;
             }
         }
@@ -172,7 +173,8 @@ class VetOnboardingService
     {
         $extension = $file->getClientOriginalExtension();
         $filename  = Str::uuid()->toString() . '.' . $extension;
-        $path      = $file->storeAs('vet-documents', $filename, 'public');
+        // CRIT-04 FIX: Store vet documents on private 'local' disk, not 'public'
+        $path      = $file->storeAs('vet-documents', $filename, 'local');
 
         try {
             $fieldMap = [
@@ -199,7 +201,7 @@ class VetOnboardingService
             ]);
         } catch (\Throwable $e) {
             // DB update failed — clean up orphaned file
-            Storage::disk('public')->delete($path);
+            Storage::disk('local')->delete($path);
             throw $e;
         }
 
@@ -281,10 +283,15 @@ class VetOnboardingService
                 throw new VetDocumentException($missingDocs, 'Required documents missing or corrupted');
             }
 
-            // All clear — approve
+            // All clear — approve and verify email
             $vetProfile->update([
                 'vet_status' => 'approved',
                 'verification_status' => 'approved',
+            ]);
+
+            // Verify the user's email if not already verified
+            $vetProfile->user?->update([
+                'email_verified_at' => $vetProfile->user->email_verified_at ?? now(),
             ]);
 
             // Create persistent verification record with snapshot

@@ -46,11 +46,12 @@ class SosController extends Controller
             return $this->error('Unable to create SOS request. Please try again.', null, 409);
         }
 
-        // Find and notify nearby vets (stub) — non-blocking
+        // Find and notify nearby vets with actual SOS data (CRIT-04)
         try {
             $vetNotification = $this->sosService->findNearestVetsStub(
                 $request->latitude,
-                $request->longitude
+                $request->longitude,
+                $sosRequest
             );
         } catch (\Throwable $e) {
             report($e);
@@ -127,6 +128,15 @@ class SosController extends Controller
             return $this->forbidden('Only the SOS owner or an admin can cancel the request.');
         }
 
+        // CRIT-05: For post-acceptance statuses, verify the acting vet is the assigned vet
+        $postAcceptStatuses = ['vet_on_the_way', 'arrived', 'sos_in_progress', 'in_progress', 'treatment_in_progress', 'sos_completed', 'completed'];
+        if ($isVet && in_array($newStatus, $postAcceptStatuses)) {
+            $vetProfile = \App\Models\VetProfile::where('user_id', $user->id)->first();
+            if (!$vetProfile || $sosRequest->assigned_vet_id !== $vetProfile->id) {
+                return $this->forbidden('Only the assigned vet can update this SOS request.');
+            }
+        }
+
         try {
             // Build extra data (vet location, charges etc.)
             $extra = [];
@@ -180,6 +190,14 @@ class SosController extends Controller
         $user = $request->user();
         if (!$user->isVet() && !$user->isAdmin()) {
             return $this->forbidden('Only vets can update location.');
+        }
+
+        // MED-07: Only the assigned vet can update location for this SOS
+        if ($user->isVet()) {
+            $vetProfile = \App\Models\VetProfile::where('user_id', $user->id)->first();
+            if (!$vetProfile || $sosRequest->assigned_vet_id !== $vetProfile->id) {
+                return $this->forbidden('Only the assigned vet can update location for this SOS.');
+            }
         }
 
         $sosRequest = $this->sosService->updateVetLocation(

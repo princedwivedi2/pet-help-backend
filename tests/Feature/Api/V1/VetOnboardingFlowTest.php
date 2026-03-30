@@ -90,6 +90,7 @@ class VetOnboardingFlowTest extends TestCase
                 'longitude' => 72.877,
                 'consultation_fee' => 600,
                 'home_visit_fee' => 1000,
+                'max_home_visit_km' => 20,
                 'services' => ['general', 'vaccination', 'dental', 'surgery'],
                 'accepted_species' => ['dog', 'cat', 'bird'],
                 'working_hours' => ['mon' => ['09:00-17:00']],

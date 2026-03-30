@@ -7,6 +7,7 @@ use App\Http\Requests\Api\V1\Appointment\StoreAppointmentRequest;
 use App\Http\Requests\Api\V1\Appointment\UpdateAppointmentStatusRequest;
 use App\Models\Appointment;
 use App\Models\VetProfile;
+use App\Models\User;
 use App\Services\AppointmentService;
 use App\Traits\ApiResponse;
 use Illuminate\Database\QueryException;
@@ -34,25 +35,28 @@ class AppointmentController extends Controller
 
         // If user is a vet, return vet appointments automatically
         if ($user->isVet()) {
-            $vetProfile = VetProfile::where('user_id', $user->id)->first();
-            if ($vetProfile) {
-                $appointments = $this->appointmentService->getVetAppointments(
-                    $vetProfile->id,
-                    $request->status,
-                    $request->date,
-                    $perPage
-                );
-
-                return $this->success('Vet appointments retrieved successfully', [
-                    'appointments' => $appointments->items(),
-                    'pagination' => [
-                        'current_page' => $appointments->currentPage(),
-                        'last_page'    => $appointments->lastPage(),
-                        'per_page'     => $appointments->perPage(),
-                        'total'        => $appointments->total(),
-                    ],
-                ]);
+            if ($response = $this->gateVetAppointmentAccess($user)) {
+                return $response;
             }
+
+            $vetProfile = VetProfile::where('user_id', $user->id)->first();
+
+            $appointments = $this->appointmentService->getVetAppointments(
+                $vetProfile->id,
+                $request->status,
+                $request->date,
+                $perPage
+            );
+
+            return $this->success('Vet appointments retrieved successfully', [
+                'appointments' => $appointments->items(),
+                'pagination' => [
+                    'current_page' => $appointments->currentPage(),
+                    'last_page'    => $appointments->lastPage(),
+                    'per_page'     => $appointments->perPage(),
+                    'total'        => $appointments->total(),
+                ],
+            ]);
         }
 
         $appointments = $this->appointmentService->getUserAppointments(
@@ -79,6 +83,11 @@ class AppointmentController extends Controller
     public function vetIndex(Request $request): JsonResponse
     {
         $user = $request->user();
+
+        if ($response = $this->gateVetAppointmentAccess($user)) {
+            return $response;
+        }
+
         $vetProfile = VetProfile::where('user_id', $user->id)->first();
 
         if (!$vetProfile) {
@@ -312,6 +321,11 @@ class AppointmentController extends Controller
             return $this->notFound('Vet profile not found');
         }
 
+        // LOW-01: Only return slots for approved vets
+        if (!$vetProfile->isApproved()) {
+            return $this->error('This vet is not currently available.', null, 422);
+        }
+
         $date = $request->query('date', now()->toDateString());
 
         $slots = $this->appointmentService->getAvailableSlots($vetProfile, $date);
@@ -377,6 +391,12 @@ class AppointmentController extends Controller
             return $this->forbidden('Admins can only view appointments. Lifecycle actions are restricted to users and assigned vets.');
         }
 
+        if ($request->user()?->isVet()) {
+            if ($response = $this->gateVetAppointmentAccess($request->user())) {
+                return $response;
+            }
+        }
+
         $appointment = $this->appointmentService->findByReference($uuid);
         if (!$appointment) {
             return $this->notFound('Appointment not found');
@@ -396,5 +416,23 @@ class AppointmentController extends Controller
             report($e);
             return $this->error('Unable to perform appointment action. Please try again.', null, 409);
         }
+    }
+
+    private function gateVetAppointmentAccess(User $user): ?JsonResponse
+    {
+        $vetProfile = VetProfile::where('user_id', $user->id)->first();
+
+        if (!$vetProfile) {
+            return $this->forbidden('Vet profile not found. Complete onboarding to manage appointments.');
+        }
+
+        if (!$vetProfile->isApproved()) {
+            return $this->forbidden('Vet account pending approval. Appointment access is disabled until approval.', [
+                'vet_status' => $vetProfile->vet_status,
+                'verification_status' => $vetProfile->verification_status ?? $vetProfile->vet_status,
+            ]);
+        }
+
+        return null;
     }
 }

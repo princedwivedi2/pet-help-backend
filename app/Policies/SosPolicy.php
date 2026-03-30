@@ -4,15 +4,28 @@ namespace App\Policies;
 
 use App\Models\SosRequest;
 use App\Models\User;
+use App\Models\VetProfile;
 
 class SosPolicy
 {
     /**
-     * Only the SOS owner can view their request.
+     * LOW-01 FIX: Owner, assigned vet, or admin can view SOS.
      */
     public function view(User $user, SosRequest $sosRequest): bool
     {
-        return $user->id === $sosRequest->user_id;
+        if ($user->id === $sosRequest->user_id || $user->isAdmin()) {
+            return true;
+        }
+
+        // Assigned vet can view
+        if ($sosRequest->assigned_vet_id) {
+            $vetProfile = VetProfile::where('user_id', $user->id)->first();
+            if ($vetProfile && $vetProfile->id === $sosRequest->assigned_vet_id) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -24,10 +37,28 @@ class SosPolicy
     }
 
     /**
-     * Only the SOS owner can update its status.
+     * LOW-01 FIX: Owner, assigned vet, or admin can update SOS status.
      */
     public function update(User $user, SosRequest $sosRequest): bool
     {
-        return $user->id === $sosRequest->user_id;
+        if ($user->id === $sosRequest->user_id || $user->isAdmin()) {
+            return true;
+        }
+
+        // Assigned vet can update
+        if ($sosRequest->assigned_vet_id) {
+            $vetProfile = VetProfile::where('user_id', $user->id)->first();
+            if ($vetProfile && $vetProfile->id === $sosRequest->assigned_vet_id) {
+                return true;
+            }
+        }
+
+        // Any emergency-available vet can accept unassigned SOS
+        if (!$sosRequest->assigned_vet_id && in_array($sosRequest->status, ['pending', 'sos_pending'])) {
+            $vetProfile = VetProfile::where('user_id', $user->id)->active()->verified()->first();
+            return $vetProfile && $vetProfile->is_emergency_available;
+        }
+
+        return false;
     }
 }
