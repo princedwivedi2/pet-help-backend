@@ -121,10 +121,10 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::get('/slots/{vet_uuid}', [AppointmentController::class, 'availableSlots']);
         Route::get('/vet', [AppointmentController::class, 'vetIndex'])->middleware('role:vet');
         Route::get('/{uuid}', [AppointmentController::class, 'show']);
-        Route::patch('/{uuid}/accept', [AppointmentController::class, 'accept']);
-        Route::patch('/{uuid}/reject', [AppointmentController::class, 'reject']);
-        Route::patch('/{uuid}/start', [AppointmentController::class, 'start']);
-        Route::patch('/{uuid}/complete', [AppointmentController::class, 'complete']);
+        Route::patch('/{uuid}/accept', [AppointmentController::class, 'accept'])->middleware('role:vet');
+        Route::patch('/{uuid}/reject', [AppointmentController::class, 'reject'])->middleware('role:vet');
+        Route::patch('/{uuid}/start', [AppointmentController::class, 'start'])->middleware('role:vet');
+        Route::patch('/{uuid}/complete', [AppointmentController::class, 'complete'])->middleware('role:vet');
         Route::patch('/{uuid}/cancel', [AppointmentController::class, 'cancel']);
         Route::put('/{uuid}/status', [AppointmentController::class, 'updateStatus']);
         Route::put('/{uuid}/end-visit', [AppointmentController::class, 'endVisit']);

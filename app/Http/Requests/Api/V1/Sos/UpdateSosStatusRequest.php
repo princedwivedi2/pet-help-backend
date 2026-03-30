@@ -28,7 +28,7 @@ class UpdateSosStatusRequest extends FormRequest
             'emergency_charge'      => ['nullable', 'numeric', 'min:0'],
             'distance_travelled_km' => ['nullable', 'numeric', 'min:0'],
             'response_type'         => ['nullable', Rule::in(['phone_guidance', 'come_to_clinic', 'home_visit'])],
-            'estimated_arrival_at'  => ['nullable', 'date'],
+            'estimated_arrival_at'  => ['nullable', 'date_format:Y-m-d\TH:i:sP'],
         ];
     }
 

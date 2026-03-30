@@ -204,6 +204,11 @@ class AppointmentService
 
         if ($cancelledBy->id === $appointment->user_id) {
             $hoursUntilAppointment = now()->diffInHours($appointment->scheduled_at, false);
+
+            if ($hoursUntilAppointment < 0) {
+                throw new \DomainException('Cannot cancel past appointments.');
+            }
+
             if ($hoursUntilAppointment < self::USER_CANCELLATION_CUTOFF_HOURS) {
                 throw new \DomainException('Appointments can only be cancelled at least 2 hours before scheduled time.');
             }

@@ -260,18 +260,22 @@ class PaymentService
         $wallet = VetWallet::where('vet_profile_id', $payment->vet_profile_id)
             ->lockForUpdate()
             ->first();
-        if (!$wallet) return;
+        if (!$wallet) {
+            return;
+        }
 
-        $debitAmount = min($refundAmount, $wallet->balance);
+        $startingBalance = $wallet->balance;
+        $startingPending = $wallet->pending_payout;
+        $debitAmount = min($refundAmount, $startingBalance);
 
         // CRIT-01: Warn and audit when refund exceeds wallet balance
         if ($refundAmount > $wallet->balance) {
-            $deficit = $refundAmount - $wallet->balance;
+            $deficit = $refundAmount - $startingBalance;
             Log::warning('Vet wallet balance insufficient for full refund debit — platform absorbs deficit', [
                 'payment_uuid' => $payment->uuid,
                 'vet_profile_id' => $payment->vet_profile_id,
                 'refund_amount' => $refundAmount,
-                'wallet_balance' => $wallet->balance,
+                'wallet_balance' => $startingBalance,
                 'deficit' => $deficit,
             ]);
 
@@ -288,10 +292,10 @@ class PaymentService
 
         $wallet->decrement('balance', $debitAmount);
         // MED-09 FIX: Wallet already locked, use current value to avoid race
-        $pendingDebit = min($debitAmount, $wallet->pending_payout);
+        $pendingDebit = min($debitAmount, $startingPending);
         $wallet->decrement('pending_payout', $pendingDebit);
 
-        $newBalance = $wallet->fresh()->balance;
+        $newBalance = max(0, $startingBalance - $debitAmount);
 
         WalletTransaction::create([
             'vet_profile_id' => $payment->vet_profile_id,

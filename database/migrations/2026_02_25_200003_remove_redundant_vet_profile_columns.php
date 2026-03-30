@@ -130,6 +130,8 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (DB::connection()->getDriverName() === 'sqlite') return;
+
         Schema::table('vet_profiles', function (Blueprint $table) {
             // Restore rating & review_count
             $table->decimal('rating', 2, 1)->nullable()->after('is_active');

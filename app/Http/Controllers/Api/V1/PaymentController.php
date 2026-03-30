@@ -147,9 +147,12 @@ class PaymentController extends Controller
         // HIGH-03 FIX: Validate amount against expected fee
         $expectedFee = null;
         if ($request->payable_type === 'appointment') {
-            $expectedFee = $payable->fee_amount ?? $payable->vetProfile?->consultation_fee;
-            if ($payable->appointment_type === 'home_visit' && $payable->vetProfile?->home_visit_fee) {
-                $expectedFee = $payable->fee_amount ?? $payable->vetProfile->home_visit_fee;
+            if ($payable->fee_amount !== null) {
+                $expectedFee = $payable->fee_amount;
+            } elseif ($payable->appointment_type === 'home_visit' && $payable->vetProfile?->home_visit_fee) {
+                $expectedFee = $payable->vetProfile->home_visit_fee;
+            } else {
+                $expectedFee = $payable->vetProfile?->consultation_fee;
             }
         } else {
             $expectedFee = $payable->emergency_charge;

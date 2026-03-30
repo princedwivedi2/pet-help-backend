@@ -19,6 +19,7 @@ Schedule::call(function () {
     }
 })
     ->everyFiveMinutes()
+    ->onOneServer()
     ->name('sos:expire-stale')
     ->withoutOverlapping();
 

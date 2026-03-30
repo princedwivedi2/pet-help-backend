@@ -81,12 +81,14 @@ class AppointmentFactory extends Factory
 
     public function homeVisit(): static
     {
-        return $this->state(fn (array $attributes) => [
-            'appointment_type' => 'home_visit',
-            'home_address' => $this->faker->address(),
-            'home_latitude' => $this->faker->latitude(40.5, 40.9),
-            'home_longitude' => $this->faker->longitude(-74.2, -73.7),
-        ]);
+        return $this->state(function (array $attributes) {
+            return [
+                'appointment_type' => 'home_visit',
+                'home_address' => $attributes['home_address'] ?? $this->faker->address(),
+                'home_latitude' => $attributes['home_latitude'] ?? $this->faker->latitude(40.5, 40.9),
+                'home_longitude' => $attributes['home_longitude'] ?? $this->faker->longitude(-74.2, -73.7),
+            ];
+        });
     }
 
     public function online(): static

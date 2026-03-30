@@ -177,9 +177,14 @@ class VetOnboardingController extends Controller
         $absolutePath = Storage::disk($disk)->path($path);
         $mime = Storage::disk($disk)->mimeType($path) ?: 'application/octet-stream';
 
+        $originalName = basename($path);
+        $sanitizedName = preg_replace('/[\r\n"\\]+/', '', $originalName) ?: 'document';
+        $encodedName = rawurlencode($sanitizedName);
+
         return response()->file($absolutePath, [
             'Content-Type' => $mime,
-            'Content-Disposition' => 'inline; filename="' . basename($path) . '"',
+            // Include RFC5987 filename* to keep browsers honest while preventing header injection
+            'Content-Disposition' => sprintf('inline; filename="%s"; filename*=UTF-8\'\'%s', $sanitizedName, $encodedName),
         ]);
     }
 

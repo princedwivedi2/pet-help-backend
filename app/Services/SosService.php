@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Notification;
 
 class SosService
 {
+    private const EARTH_RADIUS_KM = 6371;
     /**
      * Standardized SOS status transitions.
      * Primary statuses use sos_ prefix. Legacy names are accepted for backward compatibility.
@@ -344,17 +345,46 @@ class SosService
      */
     public function getActiveSosNearby(float $latitude, float $longitude, float $radiusKm = 25): \Illuminate\Database\Eloquent\Collection
     {
-        $haversine = "(6371 * acos(cos(radians(?)) * cos(radians(latitude)) * cos(radians(longitude) - radians(?)) + sin(radians(?)) * sin(radians(latitude))))";
+        $driver = DB::getDriverName();
+        $distanceExpr = $this->sosDistanceExpression($latitude, $longitude, $driver);
 
-        return SosRequest::active()
+        $query = SosRequest::active()
             ->with(['user:id,name,phone', 'pet:id,name,species', 'assignedVet'])
             ->select('sos_requests.*')
-            ->selectRaw("{$haversine} AS distance_km", [$latitude, $longitude, $latitude])
             ->whereNotNull('latitude')
             ->whereNotNull('longitude')
-            ->having('distance_km', '<=', $radiusKm)
-            ->orderBy('distance_km')
-            ->get();
+            ->selectRaw("{$distanceExpr} AS distance_km");
+
+        if ($driver === 'sqlite') {
+            $query->whereRaw("{$distanceExpr} <= ?", [$radiusKm]);
+        } else {
+            $query->having('distance_km', '<=', $radiusKm);
+        }
+
+        return $query->orderBy('distance_km')->get();
+    }
+
+    private function sosDistanceExpression(float $latitude, float $longitude, string $driver): string
+    {
+        $lat = number_format($latitude, 8, '.', '');
+        $lng = number_format($longitude, 8, '.', '');
+
+        if ($driver === 'sqlite') {
+            // SQLite builds lack robust trig support; use a lightweight approximation suitable for CI fallbacks.
+            return "((ABS(latitude - {$lat}) + ABS(longitude - {$lng})) * 111)";
+        }
+
+        $radius = self::EARTH_RADIUS_KM;
+
+        return "(
+            {$radius} * ACOS(
+                LEAST(1, GREATEST(-1,
+                    COS(RADIANS({$lat})) * COS(RADIANS(latitude)) *
+                    COS(RADIANS(longitude) - RADIANS({$lng})) +
+                    SIN(RADIANS({$lat})) * SIN(RADIANS(latitude))
+                ))
+            )
+        )";
     }
 
     public function getUserSosCountLastHour(User $user): int

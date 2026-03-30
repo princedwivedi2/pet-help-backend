@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\VetProfile;
-use Illuminate\Support\Facades\Storage;
 
 class VetProfileCompletionService
 {
@@ -25,13 +24,6 @@ class VetProfileCompletionService
         foreach (self::REQUIRED_FIELD_MAP as $responseKey => $modelField) {
             $value = $vetProfile->{$modelField};
 
-            if (str_ends_with($modelField, '_url')) {
-                if ($this->isMissingValue($value) || !$this->documentExists((string) $value)) {
-                    $missing[] = $responseKey;
-                }
-                continue;
-            }
-
             if ($this->isMissingValue($value)) {
                 $missing[] = $responseKey;
             }
@@ -45,16 +37,6 @@ class VetProfileCompletionService
         return $value === null
             || (is_string($value) && trim($value) === '')
             || (is_array($value) && count($value) === 0);
-    }
-
-    private function documentExists(string $path): bool
-    {
-        if ($path === '') {
-            return false;
-        }
-
-        // Backward compatibility: older uploads may be on public disk.
-        return Storage::disk('local')->exists($path) || Storage::disk('public')->exists($path);
     }
 
     public function getCompletionPercentage(VetProfile $vetProfile): int

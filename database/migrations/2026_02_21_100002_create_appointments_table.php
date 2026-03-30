@@ -16,6 +16,7 @@ return new class extends Migration
             $table->foreignId('vet_profile_id')->constrained()->onDelete('cascade');
             $table->foreignId('pet_id')->nullable()->constrained()->onDelete('set null');
 
+            // 'cancelled' here is reserved for admin/system actions; user/vet cancellations map to the explicit variants.
             $table->enum('status', [
                 'pending', 'confirmed', 'completed', 'cancelled', 'no_show',
                 'accepted', 'rejected', 'cancelled_by_user', 'cancelled_by_vet', 'in_progress',

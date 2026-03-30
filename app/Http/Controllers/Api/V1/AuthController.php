@@ -129,9 +129,10 @@ class AuthController extends Controller
 
         if ($currentToken) {
             $currentToken->delete();
-        } else {
-            $user->tokens()->delete();
+            return $this->success('Logout successful');
         }
+
+        $user->tokens()->delete();
 
         return $this->success('Logout successful');
     }

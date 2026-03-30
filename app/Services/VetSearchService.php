@@ -158,7 +158,9 @@ class VetSearchService
         $driver = DB::getDriverName();
 
         if ($driver === 'sqlite') {
-            // SQLite in CI may lack trig functions (ACOS/RADIANS); use lightweight approximate distance expression.
+            // SQLite in CI lacks ACOS/RADIANS, so we fall back to a Manhattan-ish approximation.
+            // Longitude degrees shrink as latitude increases, so this can be ~30-40% off around 45° lat.
+            // Good enough for smoke tests; production drivers always use the proper haversine formula below.
             return "(
                 (ABS(latitude - {$lat}) + ABS(longitude - {$lng})) * 111
             )";

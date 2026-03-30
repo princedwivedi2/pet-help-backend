@@ -23,7 +23,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (DB::connection()->getDriverName() === 'sqlite') return;
+        if (DB::connection()->getDriverName() !== 'mysql') return;
 
         // ── Fix 1: vet_verifications.admin_id CASCADE → SET NULL ──
         $this->replaceForeignKey(
@@ -99,7 +99,7 @@ return new class extends Migration
 
     public function down(): void
     {
-        if (DB::connection()->getDriverName() === 'sqlite') return;
+        if (DB::connection()->getDriverName() !== 'mysql') return;
 
         // Restore original FK behaviors
         $this->replaceForeignKey(

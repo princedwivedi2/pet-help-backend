@@ -144,6 +144,8 @@ class PetCrudTest extends TestCase
             ->deleteJson("{$this->prefix}/{$pet->id}");
 
         $response->assertOk();
+
+        $this->assertSoftDeleted('pets', ['id' => $pet->id]);
     }
 
     public function test_user_cannot_delete_other_users_pet(): void

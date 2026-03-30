@@ -92,6 +92,11 @@ return new class extends Migration
         $isMysql = DB::connection()->getDriverName() === 'mysql';
 
         if (Schema::hasTable('_deprecated_vet_verification_logs')) {
+            // Remove the rows that were migrated during up() to avoid duplicates after rollback
+            DB::table('vet_verifications')
+                ->whereIn('uuid', DB::table('_deprecated_vet_verification_logs')->select('uuid'))
+                ->delete();
+
             Schema::rename('_deprecated_vet_verification_logs', 'vet_verification_logs');
 
             if ($isMysql) {
