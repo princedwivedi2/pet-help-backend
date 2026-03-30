@@ -121,6 +121,11 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::get('/slots/{vet_uuid}', [AppointmentController::class, 'availableSlots']);
         Route::get('/vet', [AppointmentController::class, 'vetIndex'])->middleware('role:vet');
         Route::get('/{uuid}', [AppointmentController::class, 'show']);
+        Route::patch('/{uuid}/accept', [AppointmentController::class, 'accept']);
+        Route::patch('/{uuid}/reject', [AppointmentController::class, 'reject']);
+        Route::patch('/{uuid}/start', [AppointmentController::class, 'start']);
+        Route::patch('/{uuid}/complete', [AppointmentController::class, 'complete']);
+        Route::patch('/{uuid}/cancel', [AppointmentController::class, 'cancel']);
         Route::put('/{uuid}/status', [AppointmentController::class, 'updateStatus']);
         Route::put('/{uuid}/end-visit', [AppointmentController::class, 'endVisit']);
     });
@@ -190,6 +195,7 @@ Route::middleware(['auth:sanctum', 'verified', 'role:vet'])->group(function () {
     Route::put('vet/profile', [VetOnboardingController::class, 'updateProfile']);
     Route::post('vet/profile', [VetOnboardingController::class, 'updateProfile']);
     Route::post('vet/documents', [VetOnboardingController::class, 'uploadDocument']);
+    Route::get('vet/documents/{type}', [VetOnboardingController::class, 'viewDocument']);
     Route::put('vet/status', [VetOnboardingController::class, 'updateStatus']);
     Route::get('vet/availabilities', [VetOnboardingController::class, 'availabilities']);
     Route::post('vet/availabilities', [VetOnboardingController::class, 'storeAvailability']);

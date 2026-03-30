@@ -35,6 +35,9 @@ class VetUpdateProfileRequest extends ApiFormRequest
             'working_hours' => ['nullable', 'array'],
             'consultation_fee' => ['required', 'integer', 'min:0'],
             'home_visit_fee' => ['nullable', 'integer', 'min:0'],
+            'online_fee' => ['nullable', 'integer', 'min:0'],
+            'consultation_types' => ['nullable', 'array'],
+            'max_home_visit_km' => ['nullable', 'integer', 'min:0'],
 
             'degree_certificate' => ['nullable', 'string', 'max:500'],
             'government_id' => ['nullable', 'string', 'max:500'],

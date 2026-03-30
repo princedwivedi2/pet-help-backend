@@ -100,6 +100,20 @@ class AdminController extends Controller
             ]);
         }
 
+        // MED-05 FIX: Prevent promoting to admin without explicit confirmation
+        if ($request->role === 'admin' && $user->role !== 'admin') {
+            if (!$request->boolean('confirm_admin_promotion')) {
+                return $this->validationError('Admin promotion requires confirmation', [
+                    'role' => ['Promoting to admin role requires confirm_admin_promotion=true parameter.'],
+                ]);
+            }
+        }
+
+        // MED-05 FIX: Prevent demoting another admin
+        if ($user->role === 'admin' && $request->role !== 'admin') {
+            return $this->forbidden('Cannot demote another admin. Contact super-admin for this action.');
+        }
+
         // Set role explicitly — not mass-assignable for security
         $user->role = $request->role;
         $user->save();

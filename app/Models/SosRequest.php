@@ -21,6 +21,8 @@ class SosRequest extends Model
         'description',
         'emergency_type',
         'status',
+        'response_type',
+        'estimated_arrival_at',
         'assigned_vet_id',
         'vet_latitude',
         'vet_longitude',
@@ -54,6 +56,7 @@ class SosRequest extends Model
             'arrival_time_seconds' => 'integer',
             'emergency_charge' => 'integer',
             'distance_travelled_km' => 'decimal:2',
+            'estimated_arrival_at' => 'datetime',
         ];
     }
 
@@ -105,9 +108,10 @@ class SosRequest extends Model
     public function scopeActive($query)
     {
         return $query->whereIn('status', [
-            'pending', 'acknowledged', 'in_progress',
             'sos_pending', 'sos_accepted', 'vet_on_the_way',
-            'arrived', 'treatment_in_progress',
+            'arrived', 'sos_in_progress',
+            // Legacy compat
+            'pending', 'acknowledged', 'in_progress', 'treatment_in_progress',
         ]);
     }
 
@@ -124,22 +128,26 @@ class SosRequest extends Model
     public function isActive(): bool
     {
         return in_array($this->status, [
-            'pending', 'acknowledged', 'in_progress',
             'sos_pending', 'sos_accepted', 'vet_on_the_way',
-            'arrived', 'treatment_in_progress',
+            'arrived', 'sos_in_progress',
+            // Legacy compat
+            'pending', 'acknowledged', 'in_progress', 'treatment_in_progress',
         ]);
     }
 
     public function canBeCancelled(): bool
     {
         return in_array($this->status, [
-            'pending', 'acknowledged', 'in_progress',
-            'sos_pending', 'sos_accepted', 'vet_on_the_way',
+            'sos_pending', 'sos_accepted', 'vet_on_the_way', 'arrived',
+            'pending', 'acknowledged',
         ]);
     }
 
     public function canBeCompleted(): bool
     {
-        return in_array($this->status, ['in_progress', 'treatment_in_progress']);
+        return in_array($this->status, [
+            'sos_in_progress', 'in_progress', 'treatment_in_progress',
+        ]);
     }
+
 }

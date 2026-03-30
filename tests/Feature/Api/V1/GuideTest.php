@@ -103,7 +103,7 @@ class GuideTest extends TestCase
             'slug' => 'wound-care',
             'summary' => 'Basic wound care',
             'content' => 'Content...',
-            'severity_level' => 'moderate',
+            'severity_level' => 'medium',
             'is_published' => true,
         ]);
         EmergencyGuide::create([

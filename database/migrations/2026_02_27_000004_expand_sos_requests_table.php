@@ -31,12 +31,14 @@ return new class extends Migration
             $table->index('auto_expire_at');
         });
 
-        // Expand SOS status enum
-        DB::statement("ALTER TABLE sos_requests MODIFY COLUMN status ENUM(
-            'pending','acknowledged','in_progress','completed','cancelled',
-            'sos_pending','sos_accepted','vet_on_the_way','arrived',
-            'treatment_in_progress','sos_completed','sos_cancelled','expired'
-        ) DEFAULT 'pending'");
+        // Expand SOS status enum (MySQL only)
+        if (DB::connection()->getDriverName() !== 'sqlite') {
+            DB::statement("ALTER TABLE sos_requests MODIFY COLUMN status ENUM(
+                'pending','acknowledged','in_progress','completed','cancelled',
+                'sos_pending','sos_accepted','vet_on_the_way','arrived',
+                'treatment_in_progress','sos_completed','sos_cancelled','expired'
+            ) DEFAULT 'pending'");
+        }
     }
 
     public function down(): void
@@ -51,8 +53,10 @@ return new class extends Migration
             ]);
         });
 
-        DB::statement("ALTER TABLE sos_requests MODIFY COLUMN status ENUM(
-            'pending','acknowledged','in_progress','completed','cancelled'
-        ) DEFAULT 'pending'");
+        if (DB::connection()->getDriverName() !== 'sqlite') {
+            DB::statement("ALTER TABLE sos_requests MODIFY COLUMN status ENUM(
+                'pending','acknowledged','in_progress','completed','cancelled'
+            ) DEFAULT 'pending'");
+        }
     }
 };

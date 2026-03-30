@@ -25,6 +25,8 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (DB::connection()->getDriverName() === 'sqlite') return;
+
         // — Orphan cleanup (safe: set to NULL or skip if no orphans) —
 
         // pets.user_id → users.id
@@ -121,6 +123,8 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (DB::connection()->getDriverName() === 'sqlite') return;
+
         $tables = [
             'pets' => ['user_id'],
             'vet_profiles' => ['user_id'],

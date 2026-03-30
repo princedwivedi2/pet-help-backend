@@ -43,7 +43,15 @@ class PaymentController extends Controller
             if ($payable->user_id !== $user->id) {
                 return $this->forbidden('You can only pay for your own appointments.');
             }
-            $amount = $payable->fee_amount ?? $payable->vetProfile?->consultation_fee ?? 500;
+            if ($payable->fee_amount) {
+                $amount = $payable->fee_amount;
+            } elseif ($payable->appointment_type === 'home_visit' && $payable->vetProfile?->home_visit_fee) {
+                $amount = $payable->vetProfile->home_visit_fee;
+            } elseif ($payable->vetProfile?->consultation_fee) {
+                $amount = $payable->vetProfile->consultation_fee;
+            } else {
+                $amount = 500;
+            }
         } else {
             $payable = SosRequest::where('uuid', $request->payable_uuid)->first();
             if (!$payable) {
@@ -136,6 +144,25 @@ class PaymentController extends Controller
             return $this->forbidden('Only the assigned vet or admin can record offline payments.');
         }
 
+        // HIGH-03 FIX: Validate amount against expected fee
+        $expectedFee = null;
+        if ($request->payable_type === 'appointment') {
+            $expectedFee = $payable->fee_amount ?? $payable->vetProfile?->consultation_fee;
+            if ($payable->appointment_type === 'home_visit' && $payable->vetProfile?->home_visit_fee) {
+                $expectedFee = $payable->fee_amount ?? $payable->vetProfile->home_visit_fee;
+            }
+        } else {
+            $expectedFee = $payable->emergency_charge;
+        }
+
+        if ($expectedFee !== null && (float) $request->amount < $expectedFee * 0.5) {
+            return $this->error(
+                "Recorded amount (₹{$request->amount}) is significantly lower than expected fee (₹{$expectedFee}). Please verify.",
+                ['expected_fee' => $expectedFee, 'recorded_amount' => $request->amount],
+                422
+            );
+        }
+
         try {
             $vetProfileId = $request->payable_type === 'sos'
                 ? $payable->assigned_vet_id
@@ -156,7 +183,7 @@ class PaymentController extends Controller
     }
 
     /**
-     * Get payment history for the authenticated user.
+     * Get payment history for the authenticated user (or vet earnings).
      * GET /api/v1/payments
      */
     public function index(Request $request): JsonResponse
@@ -164,6 +191,28 @@ class PaymentController extends Controller
         $user = $request->user();
         $perPage = min((int) ($request->per_page ?? 15), 50);
 
+        // HIGH-06 FIX: If user is a vet, show payments received (vet_profile_id match)
+        if ($user->isVet()) {
+            $vetProfile = VetProfile::where('user_id', $user->id)->first();
+            if ($vetProfile) {
+                $payments = Payment::where('vet_profile_id', $vetProfile->id)
+                    ->with(['user:id,name', 'vetProfile:id,uuid,clinic_name,vet_name'])
+                    ->orderByDesc('created_at')
+                    ->paginate($perPage);
+
+                return $this->success('Vet payment history retrieved', [
+                    'payments' => $payments->items(),
+                    'pagination' => [
+                        'current_page' => $payments->currentPage(),
+                        'last_page'    => $payments->lastPage(),
+                        'per_page'     => $payments->perPage(),
+                        'total'        => $payments->total(),
+                    ],
+                ]);
+            }
+        }
+
+        // Regular user: show payments made
         $payments = Payment::where('user_id', $user->id)
             ->with(['vetProfile:id,uuid,clinic_name,vet_name'])
             ->orderByDesc('created_at')
@@ -226,7 +275,7 @@ class PaymentController extends Controller
         }
 
         try {
-            $payment = $this->paymentService->refund($payment, $request->reason);
+            $payment = $this->paymentService->refund($payment, null, $request->reason);
 
             return $this->success('Refund initiated', ['payment' => $payment]);
         } catch (\DomainException $e) {

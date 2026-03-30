@@ -16,11 +16,13 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (DB::connection()->getDriverName() !== 'mysql') return;
         DB::statement("ALTER TABLE vet_verification_logs MODIFY COLUMN action ENUM('applied','approved','rejected','suspended','reactivated','approval_blocked') NOT NULL");
     }
 
     public function down(): void
     {
+        if (DB::connection()->getDriverName() !== 'mysql') return;
         DB::statement("ALTER TABLE vet_verification_logs MODIFY COLUMN action ENUM('approved','rejected','suspended','reactivated','approval_blocked') NOT NULL");
     }
 };

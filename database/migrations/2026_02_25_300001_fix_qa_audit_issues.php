@@ -23,6 +23,8 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (DB::connection()->getDriverName() === 'sqlite') return;
+
         // ── Fix 1: vet_verifications.admin_id CASCADE → SET NULL ──
         $this->replaceForeignKey(
             'vet_verifications', 'admin_id', 'users', 'id', 'set null'
@@ -97,6 +99,8 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (DB::connection()->getDriverName() === 'sqlite') return;
+
         // Restore original FK behaviors
         $this->replaceForeignKey(
             'vet_verifications', 'admin_id', 'users', 'id', 'cascade'

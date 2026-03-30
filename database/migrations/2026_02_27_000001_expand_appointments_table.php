@@ -46,11 +46,13 @@ return new class extends Migration
             $table->index('is_emergency');
         });
 
-        // Expand the status enum via raw SQL (MySQL)
-        DB::statement("ALTER TABLE appointments MODIFY COLUMN status ENUM(
-            'pending','accepted','rejected','cancelled_by_user','cancelled_by_vet',
-            'in_progress','completed','no_show','confirmed','cancelled'
-        ) DEFAULT 'pending'");
+        // Expand the status enum via raw SQL (MySQL only)
+        if (DB::connection()->getDriverName() !== 'sqlite') {
+            DB::statement("ALTER TABLE appointments MODIFY COLUMN status ENUM(
+                'pending','accepted','rejected','cancelled_by_user','cancelled_by_vet',
+                'in_progress','completed','no_show','confirmed','cancelled'
+            ) DEFAULT 'pending'");
+        }
     }
 
     public function down(): void
@@ -70,8 +72,10 @@ return new class extends Migration
             ]);
         });
 
-        DB::statement("ALTER TABLE appointments MODIFY COLUMN status ENUM(
-            'pending','confirmed','completed','cancelled','no_show'
-        ) DEFAULT 'pending'");
+        if (DB::connection()->getDriverName() !== 'sqlite') {
+            DB::statement("ALTER TABLE appointments MODIFY COLUMN status ENUM(
+                'pending','confirmed','completed','cancelled','no_show'
+            ) DEFAULT 'pending'");
+        }
     }
 };

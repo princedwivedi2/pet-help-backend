@@ -5,6 +5,7 @@ namespace Tests\Feature\Api\V1;
 use App\Models\User;
 use App\Models\VetProfile;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class VetOnboardingTest extends TestCase
@@ -22,15 +23,22 @@ class VetOnboardingTest extends TestCase
             'password' => 'SecurePass1',
             'password_confirmation' => 'SecurePass1',
             'phone_number' => '+919876543210',
+            'phone' => '+919876543210',
+            'profile_photo' => 'https://example.com/profile.jpg',
             'clinic_name' => 'Happy Paws Clinic',
             'clinic_address' => '123 Vet Lane, Mumbai, Maharashtra, 400001',
+            'city' => 'Mumbai',
             'latitude' => 19.076090,
             'longitude' => 72.877426,
             'qualifications' => 'BVSc, MVSc Veterinary Surgery',
+            'qualification' => 'BVSc, MVSc Veterinary Surgery',
             'license_number' => 'VET-MH-2024-001',
             'years_of_experience' => 8,
+            'specialization' => 'Small Animal Medicine',
+            'consultation_fee' => 700,
             'accepted_species' => ['dog', 'cat', 'bird'],
             'services_offered' => ['consultation', 'vaccination', 'surgery'],
+            'working_hours' => ['mon' => ['09:00-17:00']],
         ];
     }
 
@@ -48,7 +56,6 @@ class VetOnboardingTest extends TestCase
                 'data' => [
                     'user' => ['id', 'name', 'email', 'role'],
                     'vet_profile' => ['uuid', 'clinic_name'],
-                    'token',
                 ],
             ])
             ->assertJsonPath('data.user.role', 'vet');
@@ -60,7 +67,7 @@ class VetOnboardingTest extends TestCase
 
         $this->assertDatabaseHas('vet_profiles', [
             'license_number' => 'VET-MH-2024-001',
-            'is_verified' => false,
+            'vet_status' => 'pending',
         ]);
     }
 
@@ -162,8 +169,8 @@ class VetOnboardingTest extends TestCase
     public function test_admin_list_unverified_vets(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
-        VetProfile::factory()->count(2)->create(['is_verified' => false]);
-        VetProfile::factory()->create(['is_verified' => true]);
+        VetProfile::factory()->count(2)->create(['vet_status' => 'pending']);
+        VetProfile::factory()->create(['vet_status' => 'approved']);
 
         $response = $this->actingAs($admin, 'sanctum')
             ->getJson('/api/v1/admin/vets/unverified');
@@ -174,8 +181,26 @@ class VetOnboardingTest extends TestCase
 
     public function test_admin_approve_vet(): void
     {
+        Storage::fake('public');
+        Storage::disk('public')->put('vet-documents/license.pdf', 'license');
+        Storage::disk('public')->put('vet-documents/degree.pdf', 'degree');
+        Storage::disk('public')->put('vet-documents/id.pdf', 'id');
+
         $admin = User::factory()->create(['role' => 'admin']);
-        $vet = VetProfile::factory()->create(['is_verified' => false]);
+        $vet = VetProfile::factory()->create([
+            'vet_status' => 'pending',
+            'profile_photo' => 'https://example.com/profile.jpg',
+            'license_number' => 'VERIFY-VET-001',
+            'qualifications' => 'BVSc, MVSc',
+            'specialization' => 'General Practice',
+            'years_of_experience' => 5,
+            'consultation_fee' => 700,
+            'home_visit_fee' => 1000,
+            'working_hours' => ['mon' => ['09:00-17:00']],
+            'license_document_url' => 'vet-documents/license.pdf',
+            'degree_certificate_url' => 'vet-documents/degree.pdf',
+            'government_id_url' => 'vet-documents/id.pdf',
+        ]);
 
         $response = $this->actingAs($admin, 'sanctum')
             ->putJson("/api/v1/admin/vets/{$vet->uuid}/verify", [
@@ -183,13 +208,13 @@ class VetOnboardingTest extends TestCase
             ]);
 
         $response->assertOk();
-        $this->assertTrue($vet->fresh()->is_verified);
+        $this->assertSame('approved', $vet->fresh()->vet_status);
     }
 
     public function test_admin_reject_vet(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
-        $vet = VetProfile::factory()->create(['is_verified' => false]);
+        $vet = VetProfile::factory()->create(['vet_status' => 'pending']);
 
         $response = $this->actingAs($admin, 'sanctum')
             ->putJson("/api/v1/admin/vets/{$vet->uuid}/verify", [
@@ -203,7 +228,7 @@ class VetOnboardingTest extends TestCase
     public function test_admin_reject_vet_requires_reason(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
-        $vet = VetProfile::factory()->create(['is_verified' => false]);
+        $vet = VetProfile::factory()->create(['vet_status' => 'pending']);
 
         $response = $this->actingAs($admin, 'sanctum')
             ->putJson("/api/v1/admin/vets/{$vet->uuid}/verify", [

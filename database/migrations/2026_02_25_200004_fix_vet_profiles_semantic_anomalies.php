@@ -21,6 +21,8 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (DB::connection()->getDriverName() === 'sqlite') return;
+
         // 1. Fix geo columns: make nullable, convert 0.0 sentinels to NULL
         Schema::table('vet_profiles', function (Blueprint $table) {
             $table->decimal('latitude', 10, 8)->nullable()->change();
@@ -51,6 +53,8 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (DB::connection()->getDriverName() === 'sqlite') return;
+
         // Restore payment_status to varchar
         DB::statement("ALTER TABLE appointments MODIFY COLUMN payment_status VARCHAR(20) NOT NULL DEFAULT 'unpaid'");
 

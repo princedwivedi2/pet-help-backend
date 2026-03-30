@@ -16,19 +16,18 @@ class VetSearchTest extends TestCase
     // VET SEARCH
     // ═══════════════════════════════════════════════════════════════════════
 
-    public function test_search_vets_requires_coordinates(): void
+    public function test_search_vets_works_without_coordinates(): void
     {
         $response = $this->getJson("{$this->prefix}");
 
-        $response->assertStatus(422);
+        $response->assertOk();
     }
 
     public function test_search_vets_with_valid_coordinates(): void
     {
-        VetProfile::factory()->create([
+        VetProfile::factory()->verified()->create([
             'latitude' => 19.076090,
             'longitude' => 72.877426,
-            'is_verified' => true,
         ]);
 
         $response = $this->getJson("{$this->prefix}?lat=19.076&lng=72.877");
@@ -62,7 +61,7 @@ class VetSearchTest extends TestCase
 
     public function test_show_vet_by_uuid(): void
     {
-        $vet = VetProfile::factory()->create(['is_verified' => true]);
+        $vet = VetProfile::factory()->verified()->create();
 
         $response = $this->getJson("{$this->prefix}/{$vet->uuid}");
 

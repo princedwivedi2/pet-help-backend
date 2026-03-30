@@ -13,7 +13,7 @@ class AuditService
         ?int $userId,
         string $modelType,
         int $modelId,
-        string $oldStatus,
+        ?string $oldStatus,
         string $newStatus,
         ?string $description = null
     ): AuditLog {
@@ -24,7 +24,7 @@ class AuditService
             'status_changed',
             ['status' => $oldStatus],
             ['status' => $newStatus],
-            $description ?? "Status changed from {$oldStatus} to {$newStatus}"
+            $description ?? "Status changed from " . ($oldStatus ?? 'none') . " to {$newStatus}"
         );
     }
 

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\SosRateLimitException;
 use App\Models\SosRequest;
 use App\Models\IncidentLog;
 use App\Models\User;
@@ -9,33 +10,39 @@ use App\Notifications\SosAlertNotification;
 use App\Notifications\SosStatusNotification;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Notification;
 
 class SosService
 {
     /**
-     * Expanded SOS status transitions (Zomato-style tracking).
+     * Standardized SOS status transitions.
+     * Primary statuses use sos_ prefix. Legacy names are accepted for backward compatibility.
      */
     private const VALID_TRANSITIONS = [
-        'pending'               => ['sos_pending', 'acknowledged', 'sos_accepted', 'cancelled', 'sos_cancelled', 'expired'],
-        'sos_pending'           => ['sos_accepted', 'sos_cancelled', 'expired'],
-        'acknowledged'          => ['in_progress', 'sos_accepted', 'vet_on_the_way', 'cancelled', 'sos_cancelled'],
-        'sos_accepted'          => ['vet_on_the_way', 'in_progress', 'treatment_in_progress', 'sos_cancelled'],
-        'vet_on_the_way'        => ['arrived', 'sos_cancelled'],
-        'arrived'               => ['treatment_in_progress', 'in_progress', 'sos_cancelled'],
-        'in_progress'           => ['completed', 'sos_completed', 'cancelled', 'sos_cancelled'],
+        // ── New standardized statuses ──
+        'sos_pending' => ['sos_accepted', 'sos_cancelled', 'expired'],
+        'sos_accepted' => ['vet_on_the_way', 'sos_in_progress', 'sos_cancelled'],
+        'vet_on_the_way' => ['arrived', 'sos_cancelled'],
+        'arrived' => ['sos_in_progress', 'sos_cancelled'],
+        'sos_in_progress' => ['sos_completed', 'sos_cancelled'],
+        'sos_completed' => [],
+        'sos_cancelled' => [],
+        'expired' => [],
+        // ── Legacy status backward compat (map to new names) ──
+        'pending' => ['sos_accepted', 'acknowledged', 'sos_cancelled', 'cancelled', 'expired'],
+        'acknowledged' => ['vet_on_the_way', 'sos_in_progress', 'in_progress', 'completed', 'sos_completed', 'sos_cancelled', 'cancelled'],
+        'in_progress' => ['sos_completed', 'completed', 'sos_cancelled', 'cancelled'],
         'treatment_in_progress' => ['sos_completed', 'completed', 'sos_cancelled'],
-        'completed'             => [],
-        'sos_completed'         => [],
-        'cancelled'             => [],
-        'sos_cancelled'         => [],
-        'expired'               => [],
+        'completed' => [],
+        'cancelled' => [],
     ];
 
     public function __construct(
         private VetSearchService $vetSearchService,
         private AuditService $auditService
-    ) {}
+    ) {
+    }
 
     public function createSos(User $user, array $data): SosRequest
     {
@@ -55,7 +62,7 @@ class SosService
                 ->count();
 
             if ($recentCount >= 5) {
-                throw new \DomainException('You can only create 5 SOS requests per hour. Please wait before creating another.');
+                throw new SosRateLimitException('You can only create 5 SOS requests per hour. Please wait before creating another.');
             }
 
             $sosRequest = SosRequest::create([
@@ -105,7 +112,10 @@ class SosService
         });
     }
 
-    public function findNearestVetsStub(float $latitude, float $longitude, int $limit = 5): array
+    /**
+     * Find and notify nearest emergency-available vets.
+     */
+    public function findNearestVetsStub(float $latitude, float $longitude, SosRequest $sosRequest, int $limit = 5): array
     {
         $nearbyVets = $this->vetSearchService->getNearbyVets(
             $latitude,
@@ -114,6 +124,17 @@ class SosService
             emergencyOnly: true,
             limit: $limit
         );
+
+        // CRIT-04: Send actual SOS data to each nearby vet (not generic stub)
+        foreach ($nearbyVets as $vet) {
+            try {
+                if ($vet->user) {
+                    $vet->user->notify(new SosAlertNotification($sosRequest));
+                }
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
 
         return [
             'vets_notified' => $nearbyVets->count(),
@@ -150,11 +171,17 @@ class SosService
                 case 'sos_accepted':
                 case 'acknowledged':
                     $updateData['acknowledged_at'] = now();
-                    if ($previousStatus === 'sos_pending') {
+                    if (in_array($previousStatus, ['sos_pending', 'pending'])) {
                         $updateData['response_time_seconds'] = now()->diffInSeconds($sosRequest->created_at);
                     }
                     if (isset($extra['vet_profile_id'])) {
                         $updateData['assigned_vet_id'] = $extra['vet_profile_id'];
+                    }
+                    if (isset($extra['response_type'])) {
+                        $updateData['response_type'] = $extra['response_type'];
+                    }
+                    if (isset($extra['estimated_arrival_at'])) {
+                        $updateData['estimated_arrival_at'] = $extra['estimated_arrival_at'];
                     }
                     break;
 
@@ -179,6 +206,7 @@ class SosService
 
                 case 'treatment_in_progress':
                 case 'in_progress':
+                case 'sos_in_progress':
                     $updateData['treatment_started_at'] = now();
                     break;
 
@@ -281,6 +309,7 @@ class SosService
 
         foreach ($expired as $sos) {
             try {
+                /** @var SosRequest $sos */
                 $this->updateStatus($sos, 'expired', null);
             } catch (\Throwable $e) {
                 report($e);
@@ -300,13 +329,31 @@ class SosService
     }
 
     /**
-     * Get ALL active SOS requests (for vets and admins).
+     * Get ALL active SOS requests (for admins).
      */
-    public function getAllActiveSos(): \Illuminate\Database\Eloquent\Collection
+    public function getAllActiveSos()
     {
         return SosRequest::active()
             ->with(['user:id,name,phone', 'pet:id,name,species', 'assignedVet'])
             ->latest()
+            ->get();
+    }
+
+    /**
+     * Get active SOS requests within a radius of the vet's location.
+     */
+    public function getActiveSosNearby(float $latitude, float $longitude, float $radiusKm = 25): \Illuminate\Database\Eloquent\Collection
+    {
+        $haversine = "(6371 * acos(cos(radians(?)) * cos(radians(latitude)) * cos(radians(longitude) - radians(?)) + sin(radians(?)) * sin(radians(latitude))))";
+
+        return SosRequest::active()
+            ->with(['user:id,name,phone', 'pet:id,name,species', 'assignedVet'])
+            ->select('sos_requests.*')
+            ->selectRaw("{$haversine} AS distance_km", [$latitude, $longitude, $latitude])
+            ->whereNotNull('latitude')
+            ->whereNotNull('longitude')
+            ->having('distance_km', '<=', $radiusKm)
+            ->orderBy('distance_km')
             ->get();
     }
 

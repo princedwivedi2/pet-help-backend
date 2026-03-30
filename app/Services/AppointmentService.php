@@ -7,12 +7,15 @@ use App\Models\User;
 use App\Models\VetProfile;
 use App\Notifications\AppointmentBookedNotification;
 use App\Notifications\AppointmentStatusNotification;
+use Carbon\Carbon;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class AppointmentService
 {
+    private const USER_CANCELLATION_CUTOFF_HOURS = 2;
+
     /**
      * Valid appointment status transitions.
      */
@@ -39,21 +42,54 @@ class AppointmentService
     public function create(User $user, VetProfile $vetProfile, array $data): Appointment
     {
         return DB::transaction(function () use ($user, $vetProfile, $data) {
-            // Lock the vet's appointments for the time slot to prevent race conditions
+            // Validate scheduled_at is in the future (MED-02)
+            $scheduledAt = Carbon::parse($data['scheduled_at']);
+            if ($scheduledAt->isPast()) {
+                throw new \DomainException('Appointments cannot be scheduled in the past.');
+            }
+
+            $durationMinutes = $data['duration_minutes'] ?? 30;
+            $newEnd = (clone $scheduledAt)->addMinutes($durationMinutes);
+
+            // Lock the vet's appointments and check for time-range overlap (HIGH-01)
+            $driver = DB::getDriverName();
+
             $conflict = Appointment::where('vet_profile_id', $vetProfile->id)
-                ->where('scheduled_at', $data['scheduled_at'])
                 ->whereIn('status', ['pending', 'accepted', 'confirmed', 'in_progress'])
                 ->lockForUpdate()
+                ->where(function ($q) use ($scheduledAt, $newEnd, $driver) {
+                    // Existing appointment overlaps if: existing.start < new.end AND existing.end > new.start
+                    if ($driver === 'sqlite') {
+                        $q->whereRaw('scheduled_at < ?', [$newEnd])
+                          ->whereRaw("julianday(scheduled_at, '+' || duration_minutes || ' minutes') > julianday(?)", [$scheduledAt]);
+                    } else {
+                        $q->where('scheduled_at', '<', $newEnd)
+                          ->whereRaw('DATE_ADD(scheduled_at, INTERVAL duration_minutes MINUTE) > ?', [$scheduledAt]);
+                    }
+                })
                 ->exists();
 
             if ($conflict) {
-                throw new \DomainException('This time slot is already booked.');
+                throw new \DomainException('This time slot overlaps with an existing booking.');
             }
 
             // Validate home visit has address
             $appointmentType = $data['appointment_type'] ?? 'clinic_visit';
             if ($appointmentType === 'home_visit' && empty($data['home_address'])) {
                 throw new \DomainException('Home visit requires an address.');
+            }
+
+            // Validate appointment_type against vet's consultation_types
+            if (!empty($vetProfile->consultation_types) && is_array($vetProfile->consultation_types)) {
+                if (!in_array($appointmentType, $vetProfile->consultation_types)) {
+                    throw new \DomainException("This veterinarian does not offer {$appointmentType} consultations.");
+                }
+            }
+
+            // Determine fee based on appointment type
+            $feeAmount = $vetProfile->consultation_fee;
+            if ($appointmentType === 'home_visit' && $vetProfile->home_visit_fee) {
+                $feeAmount = $vetProfile->home_visit_fee;
             }
 
             // Validate pet is required
@@ -80,12 +116,9 @@ class AppointmentService
                 'home_address'     => $data['home_address'] ?? null,
                 'home_latitude'    => $data['home_latitude'] ?? null,
                 'home_longitude'   => $data['home_longitude'] ?? null,
-                'fee_amount'       => $vetProfile->consultation_fee,
+                'fee_amount'       => $feeAmount,
                 'status'           => 'pending',
             ]);
-
-            // Increment vet total appointments
-            $vetProfile->increment('total_appointments');
 
             // Audit log
             $this->auditService->logStatusChange(
@@ -107,7 +140,7 @@ class AppointmentService
                 report($e);
             }
 
-            return $appointment->load(['user:id,name', 'vetProfile:id,uuid,clinic_name,vet_name', 'pet:id,name,species']);
+            return $appointment->load(['user:id,name', 'vetProfile:id,user_id,uuid,clinic_name,vet_name', 'pet:id,name,species']);
         });
     }
 
@@ -128,6 +161,8 @@ class AppointmentService
     {
         return $this->transitionStatus($appointment, 'accepted', function ($appt) {
             $appt->update(['status' => 'accepted', 'accepted_at' => now()]);
+            // Increment total_appointments on acceptance, not on booking (HIGH-04)
+            $appt->vetProfile?->increment('total_appointments');
         });
     }
 
@@ -154,9 +189,7 @@ class AppointmentService
             ];
             if ($notes) $updateData['notes'] = $notes;
             $appt->update($updateData);
-
-            // Update vet stats
-            $appt->vetProfile?->increment('completed_appointments');
+            // completed_appointments is now incremented in transitionStatus (LOW-04)
         });
     }
 
@@ -165,6 +198,17 @@ class AppointmentService
      */
     public function cancel(Appointment $appointment, User $cancelledBy, string $reason): Appointment
     {
+        if (trim($reason) === '') {
+            throw new \DomainException('Cancellation reason is required.');
+        }
+
+        if ($cancelledBy->id === $appointment->user_id) {
+            $hoursUntilAppointment = now()->diffInHours($appointment->scheduled_at, false);
+            if ($hoursUntilAppointment < self::USER_CANCELLATION_CUTOFF_HOURS) {
+                throw new \DomainException('Appointments can only be cancelled at least 2 hours before scheduled time.');
+            }
+        }
+
         $isUserCancel = $cancelledBy->id === $appointment->user_id;
         $status = $isUserCancel ? 'cancelled_by_user' : ($cancelledBy->isVet() ? 'cancelled_by_vet' : 'cancelled');
 
@@ -223,8 +267,7 @@ class AppointmentService
             ];
             if ($notes) $updateData['notes'] = $notes;
             $appt->update($updateData);
-
-            $appt->vetProfile?->increment('completed_appointments');
+            // completed_appointments is now incremented in transitionStatus (LOW-04)
         });
     }
 
@@ -245,6 +288,11 @@ class AppointmentService
             }
 
             $mutator($appointment);
+
+            // Centralized completed_appointments increment (LOW-04)
+            if ($targetStatus === 'completed') {
+                $appointment->vetProfile?->increment('completed_appointments');
+            }
 
             // Audit log
             $this->auditService->logStatusChange(
@@ -274,7 +322,7 @@ class AppointmentService
                 report($e);
             }
 
-            return $appointment->fresh(['user:id,name', 'vetProfile:id,uuid,clinic_name,vet_name', 'pet:id,name,species']);
+            return $appointment->fresh(['user:id,name', 'vetProfile:id,user_id,uuid,clinic_name,vet_name', 'pet:id,name,species']);
         });
     }
 
@@ -287,10 +335,14 @@ class AppointmentService
         int $perPage = 15
     ): LengthAwarePaginator {
         $query = Appointment::forUser($user->id)
-            ->with(['vetProfile:id,uuid,clinic_name,vet_name,phone', 'pet:id,name,species']);
+            ->with(['vetProfile:id,user_id,uuid,clinic_name,vet_name,phone', 'pet:id,name,species']);
 
         if ($status) {
-            $query->byStatus($status);
+            if ($status === 'cancelled') {
+                $query->whereIn('status', ['cancelled', 'cancelled_by_user', 'cancelled_by_vet']);
+            } else {
+                $query->byStatus($status);
+            }
         }
 
         return $query->orderByDesc('scheduled_at')->paginate($perPage);
@@ -309,7 +361,11 @@ class AppointmentService
             ->with(['user:id,name,email,phone', 'pet:id,name,species']);
 
         if ($status) {
-            $query->byStatus($status);
+            if ($status === 'cancelled') {
+                $query->whereIn('status', ['cancelled', 'cancelled_by_user', 'cancelled_by_vet']);
+            } else {
+                $query->byStatus($status);
+            }
         }
 
         if ($date) {
@@ -325,7 +381,7 @@ class AppointmentService
     public function findByUuid(string $uuid): ?Appointment
     {
         return Appointment::where('uuid', $uuid)
-            ->with(['user:id,name', 'vetProfile:id,uuid,clinic_name,vet_name', 'pet:id,name,species'])
+            ->with(['user:id,name', 'vetProfile:id,user_id,uuid,clinic_name,vet_name', 'pet:id,name,species'])
             ->first();
     }
 
@@ -334,7 +390,7 @@ class AppointmentService
      */
     public function findByReference(string $reference): ?Appointment
     {
-        $query = Appointment::with(['user:id,name', 'vetProfile:id,uuid,clinic_name,vet_name', 'pet:id,name,species']);
+        $query = Appointment::with(['user:id,name', 'vetProfile:id,user_id,uuid,clinic_name,vet_name', 'pet:id,name,species']);
 
         if (is_numeric($reference)) {
             return $query->where('id', (int) $reference)
@@ -343,6 +399,72 @@ class AppointmentService
         }
 
         return $query->where('uuid', $reference)->first();
+    }
+
+    /**
+     * HIGH-04 FIX: Expire stale appointments that are past their scheduled time.
+     * - Pending appointments older than 24 hours or past scheduled_at -> cancelled
+     * - Accepted/confirmed appointments past scheduled_at + duration -> no_show
+     */
+    public function expireStale(): int
+    {
+        $expiredCount = 0;
+
+        // 1. Cancel pending appointments that are past their scheduled time
+        $stalePending = Appointment::whereIn('status', ['pending'])
+            ->where('scheduled_at', '<', now())
+            ->get();
+
+        foreach ($stalePending as $appointment) {
+            try {
+                $appointment->update([
+                    'status' => 'cancelled',
+                    'cancellation_reason' => 'Auto-cancelled: appointment time passed without vet response',
+                    'cancelled_at' => now(),
+                    'cancelled_at_slot_release' => now(),
+                ]);
+                $this->auditService->logStatusChange(
+                    null, Appointment::class, $appointment->id, 'pending', 'cancelled', 'Auto-expired'
+                );
+                $expiredCount++;
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
+        // 2. Mark accepted/confirmed appointments as no_show if past scheduled_at + 30 min buffer
+        $driver = DB::getDriverName();
+        $staleQuery = Appointment::whereIn('status', ['accepted', 'confirmed']);
+
+        if ($driver === 'sqlite') {
+            $staleQuery->whereRaw("datetime(scheduled_at, '+' || (duration_minutes + 30) || ' minutes') < datetime('now')");
+        } else {
+            $staleQuery->whereRaw("DATE_ADD(scheduled_at, INTERVAL (duration_minutes + 30) MINUTE) < NOW()");
+        }
+
+        $staleAccepted = $staleQuery->get();
+
+        foreach ($staleAccepted as $appointment) {
+            try {
+                $previousStatus = $appointment->status;
+                $appointment->update([
+                    'status' => 'no_show',
+                    'cancelled_at_slot_release' => now(),
+                ]);
+                $this->auditService->logStatusChange(
+                    null, Appointment::class, $appointment->id, $previousStatus, 'no_show', 'Auto-marked no_show'
+                );
+                $expiredCount++;
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
+        if ($expiredCount > 0) {
+            Log::info("Expired {$expiredCount} stale appointments");
+        }
+
+        return $expiredCount;
     }
 
     /**
@@ -361,16 +483,29 @@ class AppointmentService
             return [];
         }
 
-        // Get existing bookings for this date
-        $bookedSlots = Appointment::forVet($vetProfile->id)
+        // CRIT-03 FIX: Get existing bookings with duration to block all overlapping slots
+        $bookings = Appointment::forVet($vetProfile->id)
             ->onDate($date)
             ->whereIn('status', ['pending', 'accepted', 'confirmed', 'in_progress'])
-            ->pluck('scheduled_at')
-            ->map(fn ($dt) => $dt->format('H:i'))
-            ->toArray();
+            ->select('scheduled_at', 'duration_minutes')
+            ->get();
+
+        // Build list of all blocked 30-min slots based on booking durations
+        $slotDuration = 30; // minutes
+        $blockedSlots = [];
+        foreach ($bookings as $booking) {
+            $startMinutes = (int) $booking->scheduled_at->format('H') * 60
+                          + (int) $booking->scheduled_at->format('i');
+            $endMinutes = $startMinutes + ($booking->duration_minutes ?? 30);
+
+            // Block all 30-min slots that overlap with this booking
+            for ($m = $startMinutes; $m < $endMinutes; $m += $slotDuration) {
+                $blockedSlots[] = sprintf('%02d:%02d', intdiv($m, 60), $m % 60);
+            }
+        }
+        $blockedSlots = array_unique($blockedSlots);
 
         $slots = [];
-        $slotDuration = 30; // minutes
 
         if ($vetProfile->is_24_hours) {
             $start = 0;
@@ -384,7 +519,7 @@ class AppointmentService
 
                 for ($m = $openMinutes; $m + $slotDuration <= $closeMinutes; $m += $slotDuration) {
                     $time = sprintf('%02d:%02d', intdiv($m, 60), $m % 60);
-                    if (!in_array($time, $bookedSlots)) {
+                    if (!in_array($time, $blockedSlots)) {
                         $slots[] = $time;
                     }
                 }
@@ -396,7 +531,7 @@ class AppointmentService
         // 24-hour case
         for ($m = 0; $m + $slotDuration <= 24 * 60; $m += $slotDuration) {
             $time = sprintf('%02d:%02d', intdiv($m, 60), $m % 60);
-            if (!in_array($time, $bookedSlots)) {
+            if (!in_array($time, $blockedSlots)) {
                 $slots[] = $time;
             }
         }

@@ -33,9 +33,14 @@ class AppointmentStatusNotification extends Notification
     public function toArray(object $notifiable): array
     {
         $messages = [
+            'accepted' => 'Your appointment request has been accepted by the vet',
+            'rejected' => 'Your appointment request was rejected by the vet',
             'confirmed' => 'Your appointment has been confirmed',
+            'in_progress' => 'Your appointment visit has started',
             'completed' => 'Your appointment has been marked as completed',
             'cancelled' => 'Your appointment has been cancelled',
+            'cancelled_by_user' => 'The appointment was cancelled by the pet owner',
+            'cancelled_by_vet' => 'The appointment was cancelled by the vet',
             'no_show'   => 'Your appointment was marked as no-show',
         ];
 
@@ -48,6 +53,8 @@ class AppointmentStatusNotification extends Notification
             'clinic_name'       => $this->appointment->vetProfile?->clinic_name,
             'scheduled_at'      => $this->appointment->scheduled_at?->toIso8601String(),
             'message'           => $messages[$this->appointment->status] ?? 'Appointment status updated',
+            'rejection_reason'  => $this->appointment->rejection_reason,
+            'cancellation_reason' => $this->appointment->cancellation_reason,
         ];
     }
 }
