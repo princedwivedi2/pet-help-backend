@@ -9,10 +9,10 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (DB::connection()->getDriverName() === 'sqlite') return;
-
-        // Add 'applied' action to vet_verification_logs
-        DB::statement("ALTER TABLE vet_verification_logs MODIFY COLUMN action ENUM('applied','approved','rejected','suspended','reactivated') NOT NULL");
+        // ENUM ALTER is MySQL-only
+        if (DB::connection()->getDriverName() === 'mysql') {
+            DB::statement("ALTER TABLE vet_verification_logs MODIFY COLUMN action ENUM('applied','approved','rejected','suspended','reactivated') NOT NULL");
+        }
 
         // Make admin_id nullable for self-submitted applications (no admin involved)
         Schema::table('vet_verification_logs', function (Blueprint $table) {
@@ -22,9 +22,9 @@ return new class extends Migration
 
     public function down(): void
     {
-        if (DB::connection()->getDriverName() === 'sqlite') return;
-
-        DB::statement("ALTER TABLE vet_verification_logs MODIFY COLUMN action ENUM('approved','rejected','suspended','reactivated') NOT NULL");
+        if (DB::connection()->getDriverName() === 'mysql') {
+            DB::statement("ALTER TABLE vet_verification_logs MODIFY COLUMN action ENUM('approved','rejected','suspended','reactivated') NOT NULL");
+        }
 
         Schema::table('vet_verification_logs', function (Blueprint $table) {
             $table->foreignId('admin_id')->nullable(false)->change();

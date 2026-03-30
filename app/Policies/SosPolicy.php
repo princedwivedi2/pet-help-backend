@@ -17,15 +17,7 @@ class SosPolicy
             return true;
         }
 
-        // Assigned vet can view
-        if ($sosRequest->assigned_vet_id) {
-            $vetProfile = VetProfile::where('user_id', $user->id)->first();
-            if ($vetProfile && $vetProfile->id === $sosRequest->assigned_vet_id) {
-                return true;
-            }
-        }
-
-        return false;
+        return $this->isAssignedVet($user, $sosRequest);
     }
 
     /**
@@ -45,12 +37,8 @@ class SosPolicy
             return true;
         }
 
-        // Assigned vet can update
-        if ($sosRequest->assigned_vet_id) {
-            $vetProfile = VetProfile::where('user_id', $user->id)->first();
-            if ($vetProfile && $vetProfile->id === $sosRequest->assigned_vet_id) {
-                return true;
-            }
+        if ($this->isAssignedVet($user, $sosRequest)) {
+            return true;
         }
 
         // Any emergency-available vet can accept unassigned SOS
@@ -60,5 +48,20 @@ class SosPolicy
         }
 
         return false;
+    }
+
+    private function isAssignedVet(User $user, SosRequest $sosRequest): bool
+    {
+        if (!$sosRequest->assigned_vet_id) {
+            return false;
+        }
+
+        $vetProfile = $this->getUserVetProfile($user);
+        return $vetProfile && $vetProfile->id === $sosRequest->assigned_vet_id;
+    }
+
+    private function getUserVetProfile(User $user): ?VetProfile
+    {
+        return VetProfile::where('user_id', $user->id)->first();
     }
 }

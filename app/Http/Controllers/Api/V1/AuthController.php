@@ -298,11 +298,30 @@ class AuthController extends Controller
         }
 
         // MED-04: Block deletion if user has active appointments, SOS, or payments
+        $activeStatuses = ['pending', 'accepted', 'confirmed', 'in_progress'];
+
         $activeAppointments = $user->appointments()
-            ->whereIn('status', ['pending', 'accepted', 'confirmed', 'in_progress'])
+            ->whereIn('status', $activeStatuses)
             ->exists();
         if ($activeAppointments) {
             return $this->error('Cannot delete account with active appointments. Please cancel or complete them first.', null, 422);
+        }
+
+        // Also check appointments where user is the assigned vet
+        if ($user->isVet() && $user->vetProfile) {
+            $vetActiveAppointments = \App\Models\Appointment::where('vet_profile_id', $user->vetProfile->id)
+                ->whereIn('status', $activeStatuses)
+                ->exists();
+            if ($vetActiveAppointments) {
+                return $this->error('Cannot delete account with active vet appointments. Please cancel or complete them first.', null, 422);
+            }
+
+            $vetActiveSos = \App\Models\SosRequest::where('assigned_vet_id', $user->vetProfile->id)
+                ->whereIn('status', ['sos_pending', 'sos_accepted', 'vet_on_the_way', 'arrived', 'sos_in_progress', 'pending', 'acknowledged', 'in_progress'])
+                ->exists();
+            if ($vetActiveSos) {
+                return $this->error('Cannot delete account with active SOS assignments. Please complete them first.', null, 422);
+            }
         }
 
         $activeSos = $user->sosRequests()

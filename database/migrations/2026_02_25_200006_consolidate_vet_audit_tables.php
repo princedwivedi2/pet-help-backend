@@ -25,10 +25,12 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (DB::connection()->getDriverName() === 'sqlite') return;
+        $isMysql = DB::connection()->getDriverName() === 'mysql';
 
-        // Step 1: Add 'applied' and 'approval_blocked' to vet_verifications action enum
-        DB::statement("ALTER TABLE vet_verifications MODIFY COLUMN action ENUM('applied','approved','rejected','suspended','reactivated','approval_blocked') NOT NULL");
+        // Step 1: Add 'applied' and 'approval_blocked' to vet_verifications action enum (MySQL only)
+        if ($isMysql) {
+            DB::statement("ALTER TABLE vet_verifications MODIFY COLUMN action ENUM('applied','approved','rejected','suspended','reactivated','approval_blocked','request_more_info') NOT NULL");
+        }
 
         // Step 2: Make admin_id nullable (for 'applied' action — self-submitted)
         Schema::table('vet_verifications', function (Blueprint $table) {
@@ -36,9 +38,16 @@ return new class extends Migration
         });
 
         // Step 3: Add reason column (maps from vet_verification_logs.reason)
-        Schema::table('vet_verifications', function (Blueprint $table) {
-            $table->text('reason')->nullable()->after('notes');
-        });
+        if (!Schema::hasColumn('vet_verifications', 'reason')) {
+            Schema::table('vet_verifications', function (Blueprint $table) {
+                $table->text('reason')->nullable()->after('notes');
+            });
+        }
+
+        // Steps 4-6 only apply when the vet_verification_logs table exists (MySQL production)
+        if (!Schema::hasTable('vet_verification_logs')) {
+            return;
+        }
 
         // Step 4: Migrate existing vet_verification_logs data → vet_verifications
         DB::statement("
@@ -63,12 +72,12 @@ return new class extends Migration
         ");
 
         // Step 5: Drop the FK on vet_verification_logs → vet_profiles
-        if ($this->foreignKeyExists('vet_verification_logs', 'vet_verification_logs_vet_profile_id_foreign')) {
+        if ($isMysql && $this->foreignKeyExists('vet_verification_logs', 'vet_verification_logs_vet_profile_id_foreign')) {
             Schema::table('vet_verification_logs', function (Blueprint $table) {
                 $table->dropForeign(['vet_profile_id']);
             });
         }
-        if ($this->foreignKeyExists('vet_verification_logs', 'vet_verification_logs_admin_id_foreign')) {
+        if ($isMysql && $this->foreignKeyExists('vet_verification_logs', 'vet_verification_logs_admin_id_foreign')) {
             Schema::table('vet_verification_logs', function (Blueprint $table) {
                 $table->dropForeign(['admin_id']);
             });
@@ -80,20 +89,28 @@ return new class extends Migration
 
     public function down(): void
     {
-        if (DB::connection()->getDriverName() === 'sqlite') return;
+        $isMysql = DB::connection()->getDriverName() === 'mysql';
 
-        Schema::rename('_deprecated_vet_verification_logs', 'vet_verification_logs');
+        if (Schema::hasTable('_deprecated_vet_verification_logs')) {
+            Schema::rename('_deprecated_vet_verification_logs', 'vet_verification_logs');
 
-        Schema::table('vet_verification_logs', function (Blueprint $table) {
-            $table->foreign('vet_profile_id')->references('id')->on('vet_profiles')->onDelete('cascade');
-            $table->foreign('admin_id')->references('id')->on('users')->onDelete('set null');
-        });
+            if ($isMysql) {
+                Schema::table('vet_verification_logs', function (Blueprint $table) {
+                    $table->foreign('vet_profile_id')->references('id')->on('vet_profiles')->onDelete('cascade');
+                    $table->foreign('admin_id')->references('id')->on('users')->onDelete('set null');
+                });
+            }
+        }
 
-        Schema::table('vet_verifications', function (Blueprint $table) {
-            $table->dropColumn('reason');
-        });
+        if (Schema::hasColumn('vet_verifications', 'reason')) {
+            Schema::table('vet_verifications', function (Blueprint $table) {
+                $table->dropColumn('reason');
+            });
+        }
 
-        DB::statement("ALTER TABLE vet_verifications MODIFY COLUMN action ENUM('approved','rejected','suspended','reactivated') NOT NULL");
+        if ($isMysql) {
+            DB::statement("ALTER TABLE vet_verifications MODIFY COLUMN action ENUM('approved','rejected','suspended','reactivated') NOT NULL");
+        }
     }
 
     private function foreignKeyExists(string $table, string $constraintName): bool

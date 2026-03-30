@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Models\Appointment;
 use App\Models\Payment;
 use App\Models\User;
 use App\Models\VetProfile;
@@ -17,7 +18,7 @@ class PaymentFactory extends Factory
             'user_id' => User::factory(),
             'vet_profile_id' => VetProfile::factory(),
             'payable_type' => 'appointment',
-            'payable_id' => 1,
+            'payable_id' => Appointment::factory(),
             'razorpay_order_id' => 'order_mock_' . uniqid(),
             'amount' => 500,
             'platform_fee' => 500,

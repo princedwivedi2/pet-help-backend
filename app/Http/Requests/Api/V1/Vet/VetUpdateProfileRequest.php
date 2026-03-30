@@ -32,7 +32,7 @@ class VetUpdateProfileRequest extends ApiFormRequest
             'specialization' => ['nullable', 'string', 'max:150'],
             'services' => ['required', 'array', 'min:1'],
             'accepted_species' => ['required', 'array', 'min:1'],
-            'working_hours' => ['required', 'array', 'min:1'],
+            'working_hours' => ['nullable', 'array'],
             'consultation_fee' => ['required', 'integer', 'min:0'],
             'home_visit_fee' => ['nullable', 'integer', 'min:0'],
             'online_fee' => ['nullable', 'integer', 'min:0'],

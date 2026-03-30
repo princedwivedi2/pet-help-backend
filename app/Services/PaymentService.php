@@ -291,12 +291,14 @@ class PaymentService
         $pendingDebit = min($debitAmount, $wallet->pending_payout);
         $wallet->decrement('pending_payout', $pendingDebit);
 
+        $newBalance = $wallet->fresh()->balance;
+
         WalletTransaction::create([
             'vet_profile_id' => $payment->vet_profile_id,
             'payment_id' => $payment->id,
             'type' => 'refund_debit',
             'amount' => $debitAmount,
-            'balance_after' => $wallet->balance - $debitAmount,
+            'balance_after' => $newBalance,
             'description' => "Refund for payment #{$payment->uuid}",
         ]);
     }

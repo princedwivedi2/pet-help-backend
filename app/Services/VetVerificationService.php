@@ -271,7 +271,7 @@ class VetVerificationService
         if ($vetProfile->license_document_url) {
             $snapshot['license_proof'] = [
                 'path'   => $vetProfile->license_document_url,
-                'exists' => Storage::disk('public')->exists($vetProfile->license_document_url),
+                'exists' => $this->documentExists((string) $vetProfile->license_document_url),
             ];
         }
 

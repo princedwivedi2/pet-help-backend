@@ -433,18 +433,26 @@ class AppointmentService
         }
 
         // 2. Mark accepted/confirmed appointments as no_show if past scheduled_at + 30 min buffer
-        $staleAccepted = Appointment::whereIn('status', ['accepted', 'confirmed'])
-            ->whereRaw("DATE_ADD(scheduled_at, INTERVAL (duration_minutes + 30) MINUTE) < NOW()")
-            ->get();
+        $driver = DB::getDriverName();
+        $staleQuery = Appointment::whereIn('status', ['accepted', 'confirmed']);
+
+        if ($driver === 'sqlite') {
+            $staleQuery->whereRaw("datetime(scheduled_at, '+' || (duration_minutes + 30) || ' minutes') < datetime('now')");
+        } else {
+            $staleQuery->whereRaw("DATE_ADD(scheduled_at, INTERVAL (duration_minutes + 30) MINUTE) < NOW()");
+        }
+
+        $staleAccepted = $staleQuery->get();
 
         foreach ($staleAccepted as $appointment) {
             try {
+                $previousStatus = $appointment->status;
                 $appointment->update([
                     'status' => 'no_show',
                     'cancelled_at_slot_release' => now(),
                 ]);
                 $this->auditService->logStatusChange(
-                    null, Appointment::class, $appointment->id, $appointment->status, 'no_show', 'Auto-marked no_show'
+                    null, Appointment::class, $appointment->id, $previousStatus, 'no_show', 'Auto-marked no_show'
                 );
                 $expiredCount++;
             } catch (\Throwable $e) {

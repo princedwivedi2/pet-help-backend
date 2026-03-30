@@ -46,7 +46,6 @@ class Appointment extends Model
         'vet_start_longitude',
         'vet_end_latitude',
         'vet_end_longitude',
-        'payment_mode',
     ];
 
     protected function casts(): array

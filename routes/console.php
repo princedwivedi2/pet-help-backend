@@ -11,13 +11,25 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 // HIGH-06: Auto-expire stale SOS requests every 5 minutes
-Schedule::call(fn () => app(SosService::class)->expireStale())
+Schedule::call(function () {
+    try {
+        app(SosService::class)->expireStale();
+    } catch (\Throwable $e) {
+        report($e);
+    }
+})
     ->everyFiveMinutes()
     ->name('sos:expire-stale')
     ->withoutOverlapping();
 
 // HIGH-04 FIX: Auto-expire stale appointments every 15 minutes
-Schedule::call(fn () => app(AppointmentService::class)->expireStale())
+Schedule::call(function () {
+    try {
+        app(AppointmentService::class)->expireStale();
+    } catch (\Throwable $e) {
+        report($e);
+    }
+})
     ->everyFifteenMinutes()
     ->name('appointments:expire-stale')
     ->withoutOverlapping();

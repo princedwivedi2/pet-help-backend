@@ -35,11 +35,11 @@ class AppointmentController extends Controller
 
         // If user is a vet, return vet appointments automatically
         if ($user->isVet()) {
-            if ($response = $this->gateVetAppointmentAccess($user)) {
-                return $response;
+            $result = $this->gateVetAppointmentAccess($user);
+            if ($result instanceof JsonResponse) {
+                return $result;
             }
-
-            $vetProfile = VetProfile::where('user_id', $user->id)->first();
+            $vetProfile = $result;
 
             $appointments = $this->appointmentService->getVetAppointments(
                 $vetProfile->id,
@@ -84,15 +84,11 @@ class AppointmentController extends Controller
     {
         $user = $request->user();
 
-        if ($response = $this->gateVetAppointmentAccess($user)) {
-            return $response;
+        $result = $this->gateVetAppointmentAccess($user);
+        if ($result instanceof JsonResponse) {
+            return $result;
         }
-
-        $vetProfile = VetProfile::where('user_id', $user->id)->first();
-
-        if (!$vetProfile) {
-            return $this->notFound('Vet profile not found.');
-        }
+        $vetProfile = $result;
 
         $perPage = min((int) ($request->per_page ?? 15), 50);
 
@@ -392,8 +388,9 @@ class AppointmentController extends Controller
         }
 
         if ($request->user()?->isVet()) {
-            if ($response = $this->gateVetAppointmentAccess($request->user())) {
-                return $response;
+            $result = $this->gateVetAppointmentAccess($request->user());
+            if ($result instanceof JsonResponse) {
+                return $result;
             }
         }
 
@@ -418,7 +415,7 @@ class AppointmentController extends Controller
         }
     }
 
-    private function gateVetAppointmentAccess(User $user): ?JsonResponse
+    private function gateVetAppointmentAccess(User $user): JsonResponse|VetProfile
     {
         $vetProfile = VetProfile::where('user_id', $user->id)->first();
 
@@ -433,6 +430,6 @@ class AppointmentController extends Controller
             ]);
         }
 
-        return null;
+        return $vetProfile;
     }
 }

@@ -35,12 +35,14 @@ class SosController extends Controller
 
         try {
             $sosRequest = $this->sosService->createSos($user, $request->validated());
-        } catch (\DomainException $e) {
-            $statusCode = str_contains(strtolower($e->getMessage()), 'per hour') ? 429 : 422;
-
+        } catch (\App\Exceptions\SosRateLimitException $e) {
             return $this->error($e->getMessage(), [
                 'sos' => [$e->getMessage()],
-            ], $statusCode);
+            ], 429);
+        } catch (\DomainException $e) {
+            return $this->error($e->getMessage(), [
+                'sos' => [$e->getMessage()],
+            ], 422);
         } catch (\Illuminate\Database\QueryException $e) {
             report($e);
             return $this->error('Unable to create SOS request. Please try again.', null, 409);

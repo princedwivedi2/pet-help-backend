@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\SosRateLimitException;
 use App\Models\SosRequest;
 use App\Models\IncidentLog;
 use App\Models\User;
@@ -61,7 +62,7 @@ class SosService
                 ->count();
 
             if ($recentCount >= 5) {
-                throw new \DomainException('You can only create 5 SOS requests per hour. Please wait before creating another.');
+                throw new SosRateLimitException('You can only create 5 SOS requests per hour. Please wait before creating another.');
             }
 
             $sosRequest = SosRequest::create([
@@ -343,16 +344,12 @@ class SosService
      */
     public function getActiveSosNearby(float $latitude, float $longitude, float $radiusKm = 25): \Illuminate\Database\Eloquent\Collection
     {
-        // HIGH-01 FIX: Sanitize coordinates to prevent SQL injection edge cases
-        $lat = number_format($latitude, 8, '.', '');
-        $lng = number_format($longitude, 8, '.', '');
-
-        $haversine = "(6371 * acos(cos(radians({$lat})) * cos(radians(latitude)) * cos(radians(longitude) - radians({$lng})) + sin(radians({$lat})) * sin(radians(latitude))))";
+        $haversine = "(6371 * acos(cos(radians(?)) * cos(radians(latitude)) * cos(radians(longitude) - radians(?)) + sin(radians(?)) * sin(radians(latitude))))";
 
         return SosRequest::active()
             ->with(['user:id,name,phone', 'pet:id,name,species', 'assignedVet'])
             ->select('sos_requests.*')
-            ->selectRaw("{$haversine} AS distance_km")
+            ->selectRaw("{$haversine} AS distance_km", [$latitude, $longitude, $latitude])
             ->whereNotNull('latitude')
             ->whereNotNull('longitude')
             ->having('distance_km', '<=', $radiusKm)

@@ -43,10 +43,14 @@ class PaymentController extends Controller
             if ($payable->user_id !== $user->id) {
                 return $this->forbidden('You can only pay for your own appointments.');
             }
-            $amount = $payable->fee_amount ?? $payable->vetProfile?->consultation_fee ?? 500;
-            // Use home_visit_fee for home visit appointments
-            if ($payable->appointment_type === 'home_visit' && $payable->vetProfile?->home_visit_fee) {
-                $amount = $payable->fee_amount ?? $payable->vetProfile->home_visit_fee;
+            if ($payable->fee_amount) {
+                $amount = $payable->fee_amount;
+            } elseif ($payable->appointment_type === 'home_visit' && $payable->vetProfile?->home_visit_fee) {
+                $amount = $payable->vetProfile->home_visit_fee;
+            } elseif ($payable->vetProfile?->consultation_fee) {
+                $amount = $payable->vetProfile->consultation_fee;
+            } else {
+                $amount = 500;
             }
         } else {
             $payable = SosRequest::where('uuid', $request->payable_uuid)->first();

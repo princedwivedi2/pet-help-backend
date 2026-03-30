@@ -30,7 +30,7 @@ class AppointmentPolicy
      */
     public function confirm(User $user, Appointment $appointment): bool
     {
-        return $user->id === $appointment->vetProfile?->user_id;
+        return $this->isAssignedVet($user, $appointment);
     }
 
     /**
@@ -38,7 +38,7 @@ class AppointmentPolicy
      */
     public function complete(User $user, Appointment $appointment): bool
     {
-        return $user->id === $appointment->vetProfile?->user_id;
+        return $this->isAssignedVet($user, $appointment);
     }
 
     /**
@@ -46,7 +46,7 @@ class AppointmentPolicy
      */
     public function accept(User $user, Appointment $appointment): bool
     {
-        return $this->confirm($user, $appointment);
+        return $this->isAssignedVet($user, $appointment);
     }
 
     /**
@@ -54,7 +54,7 @@ class AppointmentPolicy
      */
     public function reject(User $user, Appointment $appointment): bool
     {
-        return $this->confirm($user, $appointment);
+        return $this->isAssignedVet($user, $appointment);
     }
 
     /**
@@ -62,7 +62,7 @@ class AppointmentPolicy
      */
     public function startVisit(User $user, Appointment $appointment): bool
     {
-        return $this->complete($user, $appointment);
+        return $this->isAssignedVet($user, $appointment);
     }
 
     /**
@@ -71,6 +71,11 @@ class AppointmentPolicy
     public function cancel(User $user, Appointment $appointment): bool
     {
         return $user->id === $appointment->user_id
-            || $user->id === $appointment->vetProfile?->user_id;
+            || $this->isAssignedVet($user, $appointment);
+    }
+
+    private function isAssignedVet(User $user, Appointment $appointment): bool
+    {
+        return $user->id === $appointment->vetProfile?->user_id;
     }
 }

@@ -3,7 +3,6 @@
 namespace Tests\Feature\Api\V1;
 
 use App\Models\Appointment;
-use App\Models\IncidentLog;
 use App\Models\Payment;
 use App\Models\Pet;
 use App\Models\SosRequest;

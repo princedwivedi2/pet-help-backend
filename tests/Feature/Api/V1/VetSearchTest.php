@@ -16,7 +16,7 @@ class VetSearchTest extends TestCase
     // VET SEARCH
     // ═══════════════════════════════════════════════════════════════════════
 
-    public function test_search_vets_requires_coordinates(): void
+    public function test_search_vets_works_without_coordinates(): void
     {
         $response = $this->getJson("{$this->prefix}");
 
