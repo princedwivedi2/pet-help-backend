@@ -23,6 +23,8 @@ class Review extends Model
         'vet_replied_at',
         'is_flagged',
         'flag_reason',
+        'is_visible',
+        'is_verified_purchase',
     ];
 
     protected function casts(): array
@@ -30,6 +32,8 @@ class Review extends Model
         return [
             'rating' => 'integer',
             'is_flagged' => 'boolean',
+            'is_visible' => 'boolean',
+            'is_verified_purchase' => 'boolean',
             'vet_replied_at' => 'datetime',
         ];
     }
@@ -39,6 +43,16 @@ class Review extends Model
         static::creating(function ($model) {
             if (empty($model->uuid)) {
                 $model->uuid = Str::uuid()->toString();
+            }
+
+            // Auto-set verified purchase if linked to a completed appointment/SOS
+            if (!isset($model->is_verified_purchase)) {
+                $model->is_verified_purchase = $model->determineVerifiedPurchase();
+            }
+
+            // Default visibility
+            if (!isset($model->is_visible)) {
+                $model->is_visible = true;
             }
         });
     }
@@ -73,8 +87,42 @@ class Review extends Model
         return $query->where('is_flagged', false);
     }
 
+    public function scopeVisible($query)
+    {
+        return $query->where('is_visible', true);
+    }
+
+    public function scopeVerified($query)
+    {
+        return $query->where('is_verified_purchase', true);
+    }
+
     public function getRouteKeyName(): string
     {
         return 'uuid';
+    }
+
+    /**
+     * Check if this review is from a verified transaction.
+     */
+    public function determineVerifiedPurchase(): bool
+    {
+        // Check if linked to a completed appointment
+        if ($this->appointment_id) {
+            $appointment = Appointment::find($this->appointment_id);
+            if ($appointment && $appointment->status === Appointment::STATUS_COMPLETED) {
+                return true;
+            }
+        }
+
+        // Check if linked to a resolved SOS
+        if ($this->sos_request_id) {
+            $sos = SosRequest::find($this->sos_request_id);
+            if ($sos && $sos->status === SosRequest::STATUS_RESOLVED) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

@@ -115,8 +115,9 @@ class SosService
 
     /**
      * Find and notify nearest emergency-available vets.
+     * Renamed from findNearestVetsStub - this is production code.
      */
-    public function findNearestVetsStub(float $latitude, float $longitude, SosRequest $sosRequest, int $limit = 5): array
+    public function findNearestVets(float $latitude, float $longitude, SosRequest $sosRequest, int $limit = 5): array
     {
         $nearbyVets = $this->vetSearchService->getNearbyVets(
             $latitude,
@@ -126,7 +127,7 @@ class SosService
             limit: $limit
         );
 
-        // CRIT-04: Send actual SOS data to each nearby vet (not generic stub)
+        // Send SOS notification to each nearby vet
         foreach ($nearbyVets as $vet) {
             try {
                 if ($vet->user) {
@@ -145,6 +146,120 @@ class SosService
                 'distance_km' => round($vet->distance_km, 2),
             ])->toArray(),
         ];
+    }
+
+    /**
+     * @deprecated Use findNearestVets() instead. Kept for backward compatibility.
+     */
+    public function findNearestVetsStub(float $latitude, float $longitude, SosRequest $sosRequest, int $limit = 5): array
+    {
+        return $this->findNearestVets($latitude, $longitude, $sosRequest, $limit);
+    }
+
+    /**
+     * Escalate SOS request - expand search radius and notify more vets.
+     */
+    public function escalateSos(SosRequest $sosRequest): array
+    {
+        $escalationLevel = $sosRequest->escalation_level ?? 0;
+        $escalationLevel++;
+
+        // Increase radius based on escalation level (25km -> 50km -> 100km)
+        $radiusKm = match($escalationLevel) {
+            1 => 50,
+            2 => 100,
+            default => 150,
+        };
+
+        $limit = match($escalationLevel) {
+            1 => 10,
+            2 => 20,
+            default => 50,
+        };
+
+        $nearbyVets = $this->vetSearchService->getNearbyVets(
+            $sosRequest->latitude,
+            $sosRequest->longitude,
+            radiusKm: $radiusKm,
+            emergencyOnly: true,
+            limit: $limit
+        );
+
+        // Get previously notified vet IDs to avoid duplicate notifications
+        $previouslyNotified = $sosRequest->notified_vet_ids ?? [];
+
+        $newlyNotified = [];
+        foreach ($nearbyVets as $vet) {
+            if (in_array($vet->id, $previouslyNotified)) {
+                continue;
+            }
+
+            try {
+                if ($vet->user) {
+                    $vet->user->notify(new SosAlertNotification($sosRequest, isEscalation: true));
+                    $newlyNotified[] = $vet->id;
+                }
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
+        // Update escalation tracking
+        $sosRequest->update([
+            'escalation_level' => $escalationLevel,
+            'escalated_at' => now(),
+            'notified_vet_ids' => array_merge($previouslyNotified, $newlyNotified),
+        ]);
+
+        $this->auditService->log(
+            null,
+            SosRequest::class,
+            $sosRequest->id,
+            'escalated',
+            null,
+            ['level' => $escalationLevel, 'radius_km' => $radiusKm, 'new_vets_notified' => count($newlyNotified)],
+            "SOS escalated to level {$escalationLevel}"
+        );
+
+        return [
+            'escalation_level' => $escalationLevel,
+            'radius_km' => $radiusKm,
+            'new_vets_notified' => count($newlyNotified),
+            'total_vets_notified' => count($previouslyNotified) + count($newlyNotified),
+        ];
+    }
+
+    /**
+     * Auto-escalate pending SOS requests that haven't been accepted.
+     * Should be called by a scheduled command.
+     */
+    public function autoEscalatePending(): int
+    {
+        $escalatedCount = 0;
+
+        // Find pending SOS requests older than 5 minutes without acceptance
+        $pendingSos = SosRequest::whereIn('status', ['sos_pending', 'pending'])
+            ->where('created_at', '<=', now()->subMinutes(5))
+            ->where(function ($q) {
+                $q->whereNull('escalation_level')
+                  ->orWhere('escalation_level', '<', 3);
+            })
+            ->where(function ($q) {
+                $q->whereNull('escalated_at')
+                  ->orWhere('escalated_at', '<=', now()->subMinutes(5));
+            })
+            ->get();
+
+        foreach ($pendingSos as $sos) {
+            try {
+                $this->escalateSos($sos);
+                $escalatedCount++;
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
+        return $escalatedCount;
     }
 
     /**

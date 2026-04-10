@@ -432,4 +432,97 @@ class AppointmentController extends Controller
 
         return $vetProfile;
     }
+
+    /**
+     * Reschedule an appointment.
+     * POST /api/v1/appointments/{uuid}/reschedule
+     */
+    public function reschedule(Request $request, string $uuid): JsonResponse
+    {
+        $request->validate([
+            'scheduled_at' => ['required', 'date', 'after:now'],
+            'reason' => ['nullable', 'string', 'max:500'],
+            'timezone' => ['nullable', 'string', 'max:50'],
+        ]);
+
+        $appointment = $this->appointmentService->findByReference($uuid);
+
+        if (!$appointment) {
+            return $this->notFound('Appointment not found');
+        }
+
+        try {
+            $updated = $this->appointmentService->reschedule(
+                $appointment,
+                $request->user(),
+                $request->only(['scheduled_at', 'reason', 'timezone'])
+            );
+
+            return $this->success('Appointment rescheduled successfully', [
+                'appointment' => $updated,
+            ]);
+        } catch (\DomainException $e) {
+            return $this->error($e->getMessage(), null, 422);
+        }
+    }
+
+    /**
+     * Get user's waitlist entries.
+     * GET /api/v1/waitlist
+     */
+    public function waitlistIndex(Request $request): JsonResponse
+    {
+        $waitlist = $this->appointmentService->getUserWaitlist($request->user());
+
+        return $this->success('Waitlist retrieved', [
+            'waitlist' => $waitlist,
+        ]);
+    }
+
+    /**
+     * Join waitlist for a vet.
+     * POST /api/v1/waitlist
+     */
+    public function joinWaitlist(Request $request): JsonResponse
+    {
+        $request->validate([
+            'vet_uuid' => ['required', 'string', 'exists:vet_profiles,uuid'],
+            'preferred_date' => ['required', 'date', 'after_or_equal:today'],
+            'preferred_time_start' => ['nullable', 'date_format:H:i'],
+            'preferred_time_end' => ['nullable', 'date_format:H:i', 'after:preferred_time_start'],
+            'pet_id' => ['nullable', 'integer', 'exists:pets,id'],
+            'consultation_type' => ['nullable', 'string', 'in:clinic,home_visit,video_call'],
+        ]);
+
+        $vetProfile = VetProfile::where('uuid', $request->vet_uuid)->firstOrFail();
+
+        try {
+            $entry = $this->appointmentService->joinWaitlist(
+                $request->user(),
+                $vetProfile,
+                $request->only(['preferred_date', 'preferred_time_start', 'preferred_time_end', 'pet_id', 'consultation_type'])
+            );
+
+            return $this->success('Added to waitlist', [
+                'waitlist_entry' => $entry,
+            ], 201);
+        } catch (\DomainException $e) {
+            return $this->error($e->getMessage(), null, 422);
+        }
+    }
+
+    /**
+     * Leave waitlist.
+     * DELETE /api/v1/waitlist/{uuid}
+     */
+    public function leaveWaitlist(Request $request, string $uuid): JsonResponse
+    {
+        $removed = $this->appointmentService->leaveWaitlist($request->user(), $uuid);
+
+        if (!$removed) {
+            return $this->notFound('Waitlist entry not found');
+        }
+
+        return $this->success('Removed from waitlist');
+    }
 }

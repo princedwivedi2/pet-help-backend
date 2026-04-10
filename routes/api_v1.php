@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BlogController;
 use App\Http\Controllers\Api\V1\CommunityController;
 use App\Http\Controllers\Api\V1\GuideController;
+use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\IncidentController;
 use App\Http\Controllers\Api\V1\NotificationController;
 use App\Http\Controllers\Api\V1\PaymentController;
@@ -16,6 +17,10 @@ use App\Http\Controllers\Api\V1\VetController;
 use App\Http\Controllers\Api\V1\VetOnboardingController;
 use App\Http\Controllers\Api\V1\VisitRecordController;
 use Illuminate\Support\Facades\Route;
+
+// ─── Health Check ───────────────────────────────────────────────────
+Route::get('health', [HealthController::class, 'index']);
+Route::get('health/detailed', [HealthController::class, 'detailed']);
 
 // ─── Auth ───────────────────────────────────────────────────────────
 Route::prefix('auth')->group(function () {
@@ -43,6 +48,9 @@ Route::prefix('auth')->group(function () {
         Route::delete('account', [AuthController::class, 'deleteAccount']);
     });
 });
+
+// ─── Public: Payment Webhook (no auth — HMAC verified inside handler) ──
+Route::post('payments/webhook', [PaymentController::class, 'webhook']);
 
 // ─── Vet Registration & Application ─────────────────────────────────
 Route::middleware('throttle:3,10')->group(function () {
@@ -99,11 +107,49 @@ Route::prefix('community')->group(function () {
 
 // ─── Authenticated (verified email required) ────────────────────────
 Route::middleware(['auth:sanctum', 'verified'])->group(function () {
-    // Pets (user-scoped via controller/policy)
-    Route::apiResource('pets', PetController::class);
+    // Pets (user-scoped via controller/policy) - rate limited
+    Route::middleware('throttle:60,1')->group(function () {
+        Route::apiResource('pets', PetController::class);
+    });
 
-    // SOS — users create; users + vets update status
-    Route::prefix('sos')->group(function () {
+    // Pet Management Features - rate limited
+    Route::middleware('throttle:30,1')->prefix('pets/{pet}')->group(function () {
+        // Pet Dashboard
+        Route::get('dashboard', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'dashboard']);
+
+        // Pet Notes
+        Route::prefix('notes')->group(function () {
+            Route::get('/', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'noteIndex']);
+            Route::post('/', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'noteStore']);
+            Route::get('/{note}', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'noteShow']);
+            Route::put('/{note}', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'noteUpdate']);
+            Route::delete('/{note}', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'noteDestroy']);
+        });
+
+        // Pet Reminders
+        Route::prefix('reminders')->group(function () {
+            Route::get('/', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'reminderIndex']);
+            Route::post('/', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'reminderStore']);
+            Route::post('/{reminder}/complete', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'reminderComplete']);
+        });
+
+        // Pet Documents
+        Route::prefix('documents')->group(function () {
+            Route::get('/', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'documentIndex']);
+            Route::post('/', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'documentStore']);
+            Route::get('/{document}/download', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'documentDownload']);
+        });
+
+        // Pet Medications  
+        Route::prefix('medications')->group(function () {
+            Route::get('/', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'medicationIndex']);
+            Route::post('/', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'medicationStore']);
+            Route::post('/{medication}/log', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'medicationLog']);
+        });
+    });
+
+    // SOS — users create; users + vets update status - rate limited
+    Route::middleware('throttle:10,1')->prefix('sos')->group(function () {
         Route::post('/', [SosController::class, 'store']);
         Route::get('/active', [SosController::class, 'active']);
         Route::put('/{uuid}/status', [SosController::class, 'updateStatus']);
@@ -114,8 +160,8 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
     Route::get('incidents', [IncidentController::class, 'index']);
     Route::get('incidents/{uuid}', [IncidentController::class, 'show']);
 
-    // Appointments — shared routes (users book, vets manage)
-    Route::prefix('appointments')->group(function () {
+    // Appointments — shared routes (users book, vets manage) - rate limited
+    Route::middleware('throttle:30,1')->prefix('appointments')->group(function () {
         Route::get('/', [AppointmentController::class, 'index']);
         Route::post('/', [AppointmentController::class, 'store']);
         Route::get('/slots/{vet_uuid}', [AppointmentController::class, 'availableSlots']);
@@ -128,10 +174,18 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::patch('/{uuid}/cancel', [AppointmentController::class, 'cancel']);
         Route::put('/{uuid}/status', [AppointmentController::class, 'updateStatus']);
         Route::put('/{uuid}/end-visit', [AppointmentController::class, 'endVisit']);
+        Route::post('/{uuid}/reschedule', [AppointmentController::class, 'reschedule']);
     });
 
-    // Payments
-    Route::prefix('payments')->group(function () {
+    // Waitlist
+    Route::middleware('throttle:20,1')->prefix('waitlist')->group(function () {
+        Route::get('/', [AppointmentController::class, 'waitlistIndex']);
+        Route::post('/', [AppointmentController::class, 'joinWaitlist']);
+        Route::delete('/{uuid}', [AppointmentController::class, 'leaveWaitlist']);
+    });
+
+    // Payments - rate limited
+    Route::middleware('throttle:20,1')->prefix('payments')->group(function () {
         Route::get('/', [PaymentController::class, 'index']);
         Route::post('/create-order', [PaymentController::class, 'createOrder']);
         Route::post('/verify', [PaymentController::class, 'verify']);
@@ -141,8 +195,8 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::post('/{uuid}/refund', [PaymentController::class, 'refund']);
     });
 
-    // Reviews
-    Route::prefix('reviews')->group(function () {
+    // Reviews - rate limited
+    Route::middleware('throttle:10,1')->prefix('reviews')->group(function () {
         Route::post('/', [ReviewController::class, 'store']);
         Route::put('/{uuid}/reply', [ReviewController::class, 'reply']);
         Route::put('/{uuid}/flag', [ReviewController::class, 'flag']);
@@ -201,6 +255,7 @@ Route::middleware(['auth:sanctum', 'verified', 'role:vet'])->group(function () {
     Route::post('vet/availabilities', [VetOnboardingController::class, 'storeAvailability']);
     Route::put('vet/availabilities/{id}', [VetOnboardingController::class, 'updateAvailability']);
     Route::delete('vet/availabilities/{id}', [VetOnboardingController::class, 'destroyAvailability']);
+    Route::post('vet/wallet/payout-request', [PaymentController::class, 'payoutRequest']);
 });
 
 // ─── Admin ──────────────────────────────────────────────────────────

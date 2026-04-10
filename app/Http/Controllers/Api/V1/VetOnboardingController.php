@@ -208,7 +208,7 @@ class VetOnboardingController extends Controller
             'clinic_name' => $payload['clinic_name'],
             'vet_name' => $payload['vet_name'],
             'phone' => $payload['phone'],
-            'profile_photo' => $payload['profile_photo'],
+            'profile_photo' => $payload['profile_photo'] ?? $vetProfile->profile_photo,
             'address' => $payload['clinic_address'],
             'city' => $payload['city'] ?? $vetProfile->city,
             'state' => $payload['state'] ?? $vetProfile->state,

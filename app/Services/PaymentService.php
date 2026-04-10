@@ -349,15 +349,48 @@ class PaymentService
 
     // ─── Razorpay API ───────────────────────────────────────────────
 
+    /**
+     * Check if payment gateway is properly configured.
+     */
+    public function isConfigured(): bool
+    {
+        return !empty($this->razorpayKeyId) && !empty($this->razorpayKeySecret);
+    }
+
+    /**
+     * Check if running in mock mode (no real payment processing).
+     */
+    public function isMockMode(): bool
+    {
+        return !$this->isConfigured() || str_starts_with($this->razorpayKeyId, 'rzp_test');
+    }
+
     private function createRazorpayOrder(int $amount, string $currency): array
     {
-        if (empty($this->razorpayKeyId) || empty($this->razorpayKeySecret)) {
-            // Dev/test mode — return mock order
+        if (!$this->isConfigured()) {
+            // SECURITY: Block mock orders in production environment
+            if (config('app.env') === 'production') {
+                Log::critical('Payment gateway not configured in production!', [
+                    'amount' => $amount,
+                    'currency' => $currency,
+                ]);
+                throw new \RuntimeException(
+                    'Payment gateway is not configured. Please contact support.'
+                );
+            }
+
+            // Dev/test mode — return mock order with clear warning
+            Log::warning('Using mock payment order - NOT FOR PRODUCTION', [
+                'amount' => $amount,
+                'currency' => $currency,
+            ]);
+
             return [
                 'id' => 'order_mock_' . uniqid(),
                 'amount' => $amount,
                 'currency' => $currency,
                 'status' => 'created',
+                '_mock' => true, // Flag for frontend/testing
             ];
         }
 
@@ -378,8 +411,16 @@ class PaymentService
 
     private function createRazorpayRefund(string $paymentId, int $amount): array
     {
-        if (empty($this->razorpayKeyId) || empty($this->razorpayKeySecret)) {
-            return ['id' => 'refund_mock_' . uniqid()];
+        if (!$this->isConfigured()) {
+            // SECURITY: Block mock refunds in production
+            if (config('app.env') === 'production') {
+                Log::critical('Payment gateway not configured for refund in production!');
+                throw new \RuntimeException(
+                    'Payment gateway is not configured. Please contact support.'
+                );
+            }
+
+            return ['id' => 'refund_mock_' . uniqid(), '_mock' => true];
         }
 
         $response = Http::withBasicAuth($this->razorpayKeyId, $this->razorpayKeySecret)
@@ -393,6 +434,20 @@ class PaymentService
         }
 
         return $response->json();
+    }
+
+    /**
+     * Called by webhook after Razorpay confirms capture.
+     * Credits the vet wallet and syncs the payable status.
+     */
+    public function creditVetWalletPublic(Payment $payment): void
+    {
+        $this->creditVetWallet($payment);
+    }
+
+    public function updatePayableStatusPublic(Payment $payment): void
+    {
+        $this->updatePayableStatus($payment);
     }
 
     // ─── Admin Analytics ─────────────────────────────────────────────

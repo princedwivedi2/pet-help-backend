@@ -29,6 +29,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Enable CORS for API requests from mobile app
         $middleware->api(prepend: [
             \Illuminate\Http\Middleware\HandleCors::class,
+            \App\Http\Middleware\SecurityHeaders::class,
         ]);
 
         // Register named middleware aliases
