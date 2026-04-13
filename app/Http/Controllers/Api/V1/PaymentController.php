@@ -338,13 +338,17 @@ class PaymentController extends Controller
         $signature = $request->header('X-Razorpay-Signature', '');
         $webhookSecret = config('services.razorpay.webhook_secret', '');
 
-        // Verify HMAC signature if webhook secret is configured
-        if (!empty($webhookSecret)) {
-            $expectedSignature = hash_hmac('sha256', $rawBody, $webhookSecret);
-            if (!hash_equals($expectedSignature, $signature)) {
-                \Illuminate\Support\Facades\Log::warning('Razorpay webhook signature mismatch');
-                return $this->error('Invalid signature', null, 400);
-            }
+        // Reject requests when webhook secret is not configured — never allow unverified events
+        if (empty($webhookSecret)) {
+            \Illuminate\Support\Facades\Log::critical('Razorpay webhook secret not configured — rejecting request');
+            return $this->error('Service not available', null, 503);
+        }
+
+        // Verify HMAC signature
+        $expectedSignature = hash_hmac('sha256', $rawBody, $webhookSecret);
+        if (!hash_equals($expectedSignature, $signature)) {
+            \Illuminate\Support\Facades\Log::warning('Razorpay webhook signature mismatch');
+            return $this->error('Invalid signature', null, 400);
         }
 
         $payload = json_decode($rawBody, true);

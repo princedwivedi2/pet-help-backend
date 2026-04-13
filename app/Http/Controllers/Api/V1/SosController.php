@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Events\SosLocationUpdated;
+use App\Events\SosStatusChanged;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\Sos\StoreSosRequest;
 use App\Http\Requests\Api\V1\Sos\UpdateSosStatusRequest;
@@ -170,6 +172,9 @@ class SosController extends Controller
             ]);
         }
 
+        // Broadcast status change for real-time clients
+        broadcast(new SosStatusChanged($sosRequest))->toOthers();
+
         return $this->success('SOS status updated successfully', ['sos' => $sosRequest]);
     }
 
@@ -208,6 +213,13 @@ class SosController extends Controller
             (float) $request->latitude,
             (float) $request->longitude
         );
+
+        // Broadcast location update for real-time tracking
+        broadcast(new SosLocationUpdated(
+            $sosRequest,
+            (float) $request->latitude,
+            (float) $request->longitude
+        ))->toOthers();
 
         return $this->success('Location updated', [
             'sos' => $sosRequest,

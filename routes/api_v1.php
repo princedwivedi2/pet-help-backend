@@ -47,6 +47,7 @@ Route::prefix('auth')->group(function () {
         Route::put('change-password', [AuthController::class, 'changePassword']);
         Route::put('profile', [AuthController::class, 'updateProfile']);
         Route::delete('account', [AuthController::class, 'deleteAccount']);
+        Route::post('device-token', [AuthController::class, 'registerDeviceToken']);
     });
 });
 
@@ -156,8 +157,6 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         });
     });
 
-    // SOS — users create; users + vets update status - rate limited
-    Route::middleware('throttle:10,1')->prefix('sos')->group(function () {
     // Pet-scoped sub-resources
     Route::prefix('pets/{petId}')->group(function () {
         // Medical Records (full CRUD)
@@ -170,10 +169,12 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         // Pet appointment & visit-record history
         Route::get('appointments', [PetController::class, 'appointments']);
         Route::get('visit-records', [PetController::class, 'visitRecords']);
+        // Pet-scoped incident history
+        Route::get('incidents', [IncidentController::class, 'petIncidents']);
     });
 
-    // SOS — users create; users + vets update status
-    Route::prefix('sos')->group(function () {
+    // SOS — users create; users + vets update status - rate limited
+    Route::middleware('throttle:10,1')->prefix('sos')->group(function () {
         Route::post('/', [SosController::class, 'store']);
         Route::get('/active', [SosController::class, 'active']);
         Route::put('/{uuid}/status', [SosController::class, 'updateStatus']);
@@ -265,6 +266,19 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
     Route::middleware('throttle:10,1')->group(function () {
         Route::post('community/reports', [CommunityController::class, 'report']);
     });
+
+    // ─── Chatbot / AI Pet Assistant ──────────────────────────────────
+    Route::prefix('chatbot/sessions')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\V1\ChatbotController::class, 'index']);
+        Route::post('/', [\App\Http\Controllers\Api\V1\ChatbotController::class, 'store']);
+        Route::get('/{uuid}', [\App\Http\Controllers\Api\V1\ChatbotController::class, 'show']);
+        Route::delete('/{uuid}', [\App\Http\Controllers\Api\V1\ChatbotController::class, 'destroy']);
+        // Rate-limited message send: 20 messages per minute per user
+        Route::middleware('throttle:20,1')->group(function () {
+            Route::post('/{uuid}/messages', [\App\Http\Controllers\Api\V1\ChatbotController::class, 'sendMessage']);
+        });
+        Route::get('/{uuid}/messages', [\App\Http\Controllers\Api\V1\ChatbotController::class, 'messages']);
+    });
 });
 
 // ─── Vet-only routes (require vet role) ─────────────────────────────
@@ -290,6 +304,7 @@ Route::middleware(['auth:sanctum', 'verified', 'role:admin'])->prefix('admin')->
     Route::put('users/{id}/role', [AdminController::class, 'updateUserRole']);
     Route::get('sos', [AdminController::class, 'sosRequests']);
     Route::get('incidents', [AdminController::class, 'incidents']);
+    Route::get('incidents/{uuid}', [IncidentController::class, 'adminShow']);
 
     // Appointments (admin view — all appointments across all users)
     Route::get('appointments', [AdminController::class, 'appointments']);
@@ -396,6 +411,5 @@ Route::middleware(['auth:sanctum', 'verified', 'role:admin'])->prefix('admin')->
         Route::put('{id}', [GuideController::class, 'updateGuide']);
         Route::delete('{id}', [GuideController::class, 'destroyGuide']);
     });
-});
 });
 
