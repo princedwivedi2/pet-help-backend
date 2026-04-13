@@ -242,6 +242,57 @@ class PetManagementController extends Controller
     }
 
     /**
+     * Update a pet reminder.
+     * PUT /api/v1/pets/{pet}/reminders/{reminder}
+     */
+    public function reminderUpdate(Request $request, Pet $pet, PetReminder $reminder): JsonResponse
+    {
+        $this->authorize('update', $pet);
+
+        if ($reminder->pet_id !== $pet->id) {
+            return $this->notFound('Reminder not found for this pet');
+        }
+
+        $validated = $request->validate([
+            'title' => ['required', 'string', 'max:255'],
+            'description' => ['nullable', 'string', 'max:1000'],
+            'reminder_type' => ['required', Rule::in(['vaccination', 'medication', 'checkup', 'grooming', 'feeding', 'exercise', 'training', 'deworming', 'flea_treatment', 'dental_care', 'weight_check', 'other'])],
+            'scheduled_at' => ['required', 'date'],
+            'frequency' => ['nullable', 'integer', 'min:1'],
+            'frequency_unit' => ['nullable', Rule::in(['minutes', 'hours', 'days', 'weeks', 'months', 'years'])],
+            'end_date' => ['nullable', 'date', 'after:scheduled_at'],
+            'notification_methods' => ['nullable', 'array'],
+            'notification_methods.*' => [Rule::in(['database', 'email', 'sms', 'push'])],
+            'advance_notice_minutes' => ['nullable', 'integer', 'min:1', 'max:10080'],
+            'priority' => ['nullable', 'integer', 'between:1,10'],
+            'location' => ['nullable', 'string', 'max:255'],
+            'cost_estimate' => ['nullable', 'numeric', 'min:0'],
+            'notes' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $reminder->update($validated);
+
+        return $this->success('Reminder updated successfully', ['reminder' => $reminder]);
+    }
+
+    /**
+     * Delete a pet reminder.
+     * DELETE /api/v1/pets/{pet}/reminders/{reminder}
+     */
+    public function reminderDestroy(Pet $pet, PetReminder $reminder): JsonResponse
+    {
+        $this->authorize('update', $pet);
+
+        if ($reminder->pet_id !== $pet->id) {
+            return $this->notFound('Reminder not found for this pet');
+        }
+
+        $reminder->delete();
+
+        return $this->success('Reminder deleted successfully');
+    }
+
+    /**
      * Mark reminder as completed.
      * POST /api/v1/pets/{pet}/reminders/{reminder}/complete
      */
@@ -321,6 +372,56 @@ class PetManagementController extends Controller
         $document = $this->petManagementService->uploadDocument($pet, $request->user(), $validated, $request->file('file'));
 
         return $this->success('Document uploaded successfully', ['document' => $document], 201);
+    }
+
+    /**
+     * Update document metadata (not the file itself).
+     * PUT /api/v1/pets/{pet}/documents/{document}
+     */
+    public function documentUpdate(Request $request, Pet $pet, PetDocument $document): JsonResponse
+    {
+        $this->authorize('update', $pet);
+
+        if ($document->pet_id !== $pet->id) {
+            return $this->notFound('Document not found for this pet');
+        }
+
+        $validated = $request->validate([
+            'title' => ['required', 'string', 'max:255'],
+            'description' => ['nullable', 'string', 'max:1000'],
+            'document_type' => ['required', Rule::in(['vaccination_record', 'medical_report', 'prescription', 'lab_result', 'x_ray', 'insurance_policy', 'registration', 'microchip_info', 'pedigree', 'health_certificate', 'grooming_record', 'photo', 'video', 'other'])],
+            'document_date' => ['nullable', 'date', 'before_or_equal:today'],
+            'expiry_date' => ['nullable', 'date', 'after:document_date'],
+            'tags' => ['nullable', 'array'],
+            'tags.*' => ['string', 'max:50'],
+            'is_confidential' => ['boolean'],
+        ]);
+
+        $document->update($validated);
+
+        return $this->success('Document updated successfully', ['document' => $document]);
+    }
+
+    /**
+     * Delete a document and its stored file.
+     * DELETE /api/v1/pets/{pet}/documents/{document}
+     */
+    public function documentDestroy(Pet $pet, PetDocument $document): JsonResponse
+    {
+        $this->authorize('update', $pet);
+
+        if ($document->pet_id !== $pet->id) {
+            return $this->notFound('Document not found for this pet');
+        }
+
+        // Remove the physical file before soft-deleting the record
+        if ($document->file_path && Storage::disk('private')->exists($document->file_path)) {
+            Storage::disk('private')->delete($document->file_path);
+        }
+
+        $document->delete();
+
+        return $this->success('Document deleted successfully');
     }
 
     /**
@@ -418,6 +519,84 @@ class PetManagementController extends Controller
         $medication = PetMedication::create($validated);
 
         return $this->success('Medication added successfully', ['medication' => $medication], 201);
+    }
+
+    /**
+     * Update an existing medication.
+     * PUT /api/v1/pets/{pet}/medications/{medication}
+     */
+    public function medicationUpdate(Request $request, Pet $pet, PetMedication $medication): JsonResponse
+    {
+        $this->authorize('update', $pet);
+
+        if ($medication->pet_id !== $pet->id) {
+            return $this->notFound('Medication not found for this pet');
+        }
+
+        $validated = $request->validate([
+            'medication_name' => ['required', 'string', 'max:255'],
+            'generic_name' => ['nullable', 'string', 'max:255'],
+            'dosage' => ['required', 'string', 'max:100'],
+            'dosage_unit' => ['required', 'string', 'max:50'],
+            'frequency' => ['required', 'integer', 'min:1'],
+            'frequency_unit' => ['required', Rule::in(['daily', 'weekly', 'monthly', 'as_needed', 'hours'])],
+            'duration_days' => ['nullable', 'integer', 'min:1'],
+            'start_date' => ['required', 'date'],
+            'administration_method' => ['required', Rule::in(['oral', 'topical', 'injection', 'drops', 'spray', 'inhaler', 'patch', 'suppository', 'other'])],
+            'instructions' => ['nullable', 'string', 'max:2000'],
+            'side_effects' => ['nullable', 'string', 'max:1000'],
+            'food_instructions' => ['nullable', 'string', 'max:500'],
+            'storage_instructions' => ['nullable', 'string', 'max:500'],
+            'cost' => ['nullable', 'numeric', 'min:0'],
+            'pharmacy_name' => ['nullable', 'string', 'max:255'],
+            'prescription_number' => ['nullable', 'string', 'max:100'],
+            'total_refills' => ['nullable', 'integer', 'min:0'],
+            'reminder_enabled' => ['boolean'],
+            'notes' => ['nullable', 'string', 'max:1000'],
+            'prescribed_by_vet_id' => ['nullable', 'exists:vet_profiles,id'],
+        ]);
+
+        $medication->update($validated);
+
+        return $this->success('Medication updated successfully', ['medication' => $medication]);
+    }
+
+    /**
+     * Delete a pet medication.
+     * DELETE /api/v1/pets/{pet}/medications/{medication}
+     */
+    public function medicationDestroy(Pet $pet, PetMedication $medication): JsonResponse
+    {
+        $this->authorize('update', $pet);
+
+        if ($medication->pet_id !== $pet->id) {
+            return $this->notFound('Medication not found for this pet');
+        }
+
+        $medication->delete();
+
+        return $this->success('Medication deleted successfully');
+    }
+
+    /**
+     * Discontinue a medication (mark inactive with reason).
+     * POST /api/v1/pets/{pet}/medications/{medication}/discontinue
+     */
+    public function medicationDiscontinue(Request $request, Pet $pet, PetMedication $medication): JsonResponse
+    {
+        $this->authorize('update', $pet);
+
+        if ($medication->pet_id !== $pet->id) {
+            return $this->notFound('Medication not found for this pet');
+        }
+
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'max:1000'],
+        ]);
+
+        $medication->discontinue($validated['reason']);
+
+        return $this->success('Medication discontinued', ['medication' => $medication]);
     }
 
     /**

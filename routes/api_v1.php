@@ -131,6 +131,8 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::prefix('reminders')->group(function () {
             Route::get('/', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'reminderIndex']);
             Route::post('/', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'reminderStore']);
+            Route::put('/{reminder}', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'reminderUpdate']);
+            Route::delete('/{reminder}', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'reminderDestroy']);
             Route::post('/{reminder}/complete', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'reminderComplete']);
         });
 
@@ -138,6 +140,8 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::prefix('documents')->group(function () {
             Route::get('/', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'documentIndex']);
             Route::post('/', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'documentStore']);
+            Route::put('/{document}', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'documentUpdate']);
+            Route::delete('/{document}', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'documentDestroy']);
             Route::get('/{document}/download', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'documentDownload']);
         });
 
@@ -145,6 +149,9 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::prefix('medications')->group(function () {
             Route::get('/', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'medicationIndex']);
             Route::post('/', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'medicationStore']);
+            Route::put('/{medication}', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'medicationUpdate']);
+            Route::delete('/{medication}', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'medicationDestroy']);
+            Route::post('/{medication}/discontinue', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'medicationDiscontinue']);
             Route::post('/{medication}/log', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'medicationLog']);
         });
     });
