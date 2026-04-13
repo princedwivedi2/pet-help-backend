@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\V1\IncidentController;
 use App\Http\Controllers\Api\V1\NotificationController;
 use App\Http\Controllers\Api\V1\PaymentController;
 use App\Http\Controllers\Api\V1\PetController;
+use App\Http\Controllers\Api\V1\PetMedicalRecordController;
 use App\Http\Controllers\Api\V1\ReviewController;
 use App\Http\Controllers\Api\V1\SosController;
 use App\Http\Controllers\Api\V1\VetController;
@@ -150,6 +151,22 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
 
     // SOS — users create; users + vets update status - rate limited
     Route::middleware('throttle:10,1')->prefix('sos')->group(function () {
+    // Pet-scoped sub-resources
+    Route::prefix('pets/{petId}')->group(function () {
+        // Medical Records (full CRUD)
+        Route::get('medical-records', [PetMedicalRecordController::class, 'index']);
+        Route::post('medical-records', [PetMedicalRecordController::class, 'store']);
+        Route::get('medical-records/{uuid}', [PetMedicalRecordController::class, 'show']);
+        Route::put('medical-records/{uuid}', [PetMedicalRecordController::class, 'update']);
+        Route::delete('medical-records/{uuid}', [PetMedicalRecordController::class, 'destroy']);
+
+        // Pet appointment & visit-record history
+        Route::get('appointments', [PetController::class, 'appointments']);
+        Route::get('visit-records', [PetController::class, 'visitRecords']);
+    });
+
+    // SOS — users create; users + vets update status
+    Route::prefix('sos')->group(function () {
         Route::post('/', [SosController::class, 'store']);
         Route::get('/active', [SosController::class, 'active']);
         Route::put('/{uuid}/status', [SosController::class, 'updateStatus']);
@@ -372,5 +389,6 @@ Route::middleware(['auth:sanctum', 'verified', 'role:admin'])->prefix('admin')->
         Route::put('{id}', [GuideController::class, 'updateGuide']);
         Route::delete('{id}', [GuideController::class, 'destroyGuide']);
     });
+});
 });
 

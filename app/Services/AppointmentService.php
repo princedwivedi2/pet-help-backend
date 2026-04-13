@@ -473,6 +473,28 @@ class AppointmentService
     }
 
     /**
+     * Get appointments scoped to a specific pet.
+     */
+    public function getAppointmentsForPet(
+        \App\Models\Pet $pet,
+        ?string $status = null,
+        int $perPage = 15
+    ): LengthAwarePaginator {
+        $query = Appointment::where('pet_id', $pet->id)
+            ->with(['vetProfile:id,user_id,uuid,clinic_name,vet_name,phone', 'user:id,name']);
+
+        if ($status) {
+            if ($status === 'cancelled') {
+                $query->whereIn('status', ['cancelled', 'cancelled_by_user', 'cancelled_by_vet']);
+            } else {
+                $query->byStatus($status);
+            }
+        }
+
+        return $query->orderByDesc('scheduled_at')->paginate($perPage);
+    }
+
+    /**
      * Get available slots for a vet on a given date.
      */
     public function getAvailableSlots(VetProfile $vetProfile, string $date): array

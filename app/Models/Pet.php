@@ -128,4 +128,18 @@ class Pet extends Model
     {
         return $this->overdueReminders()->exists();
     }
+    public function medicalRecords(): HasMany
+    {
+        return $this->hasMany(PetMedicalRecord::class)->orderByDesc('recorded_at');
+    }
+
+    public function appointments(): HasMany
+    {
+        return $this->hasMany(Appointment::class);
+    }
+
+    public function visitRecords(): HasMany
+    {
+        return $this->hasMany(VisitRecord::class);
+    }
 }
