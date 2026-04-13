@@ -277,6 +277,7 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::middleware('throttle:20,1')->group(function () {
             Route::post('/{uuid}/messages', [\App\Http\Controllers\Api\V1\ChatbotController::class, 'sendMessage']);
         });
+        // GET is intentionally outside the throttle group — reading history is cheap and not rate-limited
         Route::get('/{uuid}/messages', [\App\Http\Controllers\Api\V1\ChatbotController::class, 'messages']);
     });
 });

@@ -119,10 +119,8 @@ class ChatbotService
         $assistantText   = $data['choices'][0]['message']['content'] ?? '';
         $tokensUsed      = $data['usage']['total_tokens'] ?? null;
 
-        // Append disclaimer if not already present
-        if (!str_contains($assistantText, 'veterinarian') && !str_contains($assistantText, 'consult')) {
-            $assistantText .= self::DISCLAIMER;
-        }
+        // Always append disclaimer — AI health advice must always include the veterinarian caveat
+        $assistantText .= self::DISCLAIMER;
 
         $assistantMessage = ChatbotMessage::create([
             'session_id'  => $session->id,
