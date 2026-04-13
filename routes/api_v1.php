@@ -47,6 +47,7 @@ Route::prefix('auth')->group(function () {
         Route::put('change-password', [AuthController::class, 'changePassword']);
         Route::put('profile', [AuthController::class, 'updateProfile']);
         Route::delete('account', [AuthController::class, 'deleteAccount']);
+        Route::post('device-token', [AuthController::class, 'registerDeviceToken']);
     });
 });
 
@@ -131,6 +132,8 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::prefix('reminders')->group(function () {
             Route::get('/', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'reminderIndex']);
             Route::post('/', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'reminderStore']);
+            Route::put('/{reminder}', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'reminderUpdate']);
+            Route::delete('/{reminder}', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'reminderDestroy']);
             Route::post('/{reminder}/complete', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'reminderComplete']);
         });
 
@@ -138,6 +141,8 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::prefix('documents')->group(function () {
             Route::get('/', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'documentIndex']);
             Route::post('/', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'documentStore']);
+            Route::put('/{document}', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'documentUpdate']);
+            Route::delete('/{document}', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'documentDestroy']);
             Route::get('/{document}/download', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'documentDownload']);
         });
 
@@ -145,12 +150,13 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::prefix('medications')->group(function () {
             Route::get('/', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'medicationIndex']);
             Route::post('/', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'medicationStore']);
+            Route::put('/{medication}', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'medicationUpdate']);
+            Route::delete('/{medication}', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'medicationDestroy']);
+            Route::post('/{medication}/discontinue', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'medicationDiscontinue']);
             Route::post('/{medication}/log', [\App\Http\Controllers\Api\V1\PetManagementController::class, 'medicationLog']);
         });
     });
 
-    // SOS — users create; users + vets update status - rate limited
-    Route::middleware('throttle:10,1')->prefix('sos')->group(function () {
     // Pet-scoped sub-resources
     Route::prefix('pets/{petId}')->group(function () {
         // Medical Records (full CRUD)
@@ -163,10 +169,12 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         // Pet appointment & visit-record history
         Route::get('appointments', [PetController::class, 'appointments']);
         Route::get('visit-records', [PetController::class, 'visitRecords']);
+        // Pet-scoped incident history
+        Route::get('incidents', [IncidentController::class, 'petIncidents']);
     });
 
-    // SOS — users create; users + vets update status
-    Route::prefix('sos')->group(function () {
+    // SOS — users create; users + vets update status - rate limited
+    Route::middleware('throttle:10,1')->prefix('sos')->group(function () {
         Route::post('/', [SosController::class, 'store']);
         Route::get('/active', [SosController::class, 'active']);
         Route::put('/{uuid}/status', [SosController::class, 'updateStatus']);
@@ -258,6 +266,20 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
     Route::middleware('throttle:10,1')->group(function () {
         Route::post('community/reports', [CommunityController::class, 'report']);
     });
+
+    // ─── Chatbot / AI Pet Assistant ──────────────────────────────────
+    Route::prefix('chatbot/sessions')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\V1\ChatbotController::class, 'index']);
+        Route::post('/', [\App\Http\Controllers\Api\V1\ChatbotController::class, 'store']);
+        Route::get('/{uuid}', [\App\Http\Controllers\Api\V1\ChatbotController::class, 'show']);
+        Route::delete('/{uuid}', [\App\Http\Controllers\Api\V1\ChatbotController::class, 'destroy']);
+        // Rate-limited message send: 20 messages per minute per user
+        Route::middleware('throttle:20,1')->group(function () {
+            Route::post('/{uuid}/messages', [\App\Http\Controllers\Api\V1\ChatbotController::class, 'sendMessage']);
+        });
+        // GET is intentionally outside the throttle group — reading history is cheap and not rate-limited
+        Route::get('/{uuid}/messages', [\App\Http\Controllers\Api\V1\ChatbotController::class, 'messages']);
+    });
 });
 
 // ─── Vet-only routes (require vet role) ─────────────────────────────
@@ -283,6 +305,7 @@ Route::middleware(['auth:sanctum', 'verified', 'role:admin'])->prefix('admin')->
     Route::put('users/{id}/role', [AdminController::class, 'updateUserRole']);
     Route::get('sos', [AdminController::class, 'sosRequests']);
     Route::get('incidents', [AdminController::class, 'incidents']);
+    Route::get('incidents/{uuid}', [IncidentController::class, 'adminShow']);
 
     // Appointments (admin view — all appointments across all users)
     Route::get('appointments', [AdminController::class, 'appointments']);
@@ -389,6 +412,5 @@ Route::middleware(['auth:sanctum', 'verified', 'role:admin'])->prefix('admin')->
         Route::put('{id}', [GuideController::class, 'updateGuide']);
         Route::delete('{id}', [GuideController::class, 'destroyGuide']);
     });
-});
 });
 

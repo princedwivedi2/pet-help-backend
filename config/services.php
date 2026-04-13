@@ -41,4 +41,13 @@ return [
         'webhook_secret' => env('RAZORPAY_WEBHOOK_SECRET', ''),
     ],
 
+    'fcm' => [
+        'server_key' => env('FCM_SERVER_KEY', ''),
+    ],
+
+    'openai' => [
+        'key'   => env('OPENAI_API_KEY', ''),
+        'model' => env('OPENAI_MODEL', 'gpt-4o-mini'),
+    ],
+
 ];
