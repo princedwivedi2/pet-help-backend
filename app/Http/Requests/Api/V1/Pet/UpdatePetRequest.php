@@ -20,6 +20,7 @@ class UpdatePetRequest extends FormRequest
             'breed' => ['nullable', 'string', 'max:100'],
             'birth_date' => ['nullable', 'date', 'before_or_equal:today'],
             'weight_kg' => ['nullable', 'numeric', 'min:0.01', 'max:999.99'],
+            'photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
             'photo_url' => ['nullable', 'url', 'max:255'],
             'medical_notes' => ['nullable', 'string', 'max:5000'],
         ];

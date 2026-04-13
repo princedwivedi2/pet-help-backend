@@ -10,6 +10,7 @@ use App\Services\PetService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class PetController extends Controller
 {
@@ -30,6 +31,7 @@ class PetController extends Controller
     public function store(StorePetRequest $request): JsonResponse
     {
         $user = $request->user();
+        $data = $request->validated();
 
         if (!$this->petService->canUserCreatePet($user)) {
             return $this->validationError('Maximum pets limit reached', [
@@ -37,7 +39,12 @@ class PetController extends Controller
             ]);
         }
 
-        $pet = $this->petService->createPet($user, $request->validated());
+        if ($request->hasFile('photo')) {
+            $path = $request->file('photo')->store('pets', 'public');
+            $data['photo_url'] = Storage::disk('public')->url($path);
+        }
+
+        $pet = $this->petService->createPet($user, $data);
 
         return $this->created('Pet created successfully', ['pet' => $pet]);
     }
@@ -58,6 +65,7 @@ class PetController extends Controller
     public function update(UpdatePetRequest $request, int $id): JsonResponse
     {
         $pet = $this->petService->findPetForUser($request->user(), $id);
+        $data = $request->validated();
 
         if (!$pet) {
             return $this->notFound('Pet not found', [
@@ -65,7 +73,12 @@ class PetController extends Controller
             ]);
         }
 
-        $pet = $this->petService->updatePet($pet, $request->validated());
+        if ($request->hasFile('photo')) {
+            $path = $request->file('photo')->store('pets', 'public');
+            $data['photo_url'] = Storage::disk('public')->url($path);
+        }
+
+        $pet = $this->petService->updatePet($pet, $data);
 
         return $this->success('Pet updated successfully', ['pet' => $pet]);
     }

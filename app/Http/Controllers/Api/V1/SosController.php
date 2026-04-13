@@ -2,10 +2,13 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Events\SosLocationUpdated;
+use App\Events\SosStatusChanged;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\Sos\StoreSosRequest;
 use App\Http\Requests\Api\V1\Sos\UpdateSosStatusRequest;
 use App\Models\SosRequest;
+use App\Models\VetProfile;
 use App\Services\SosService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -72,7 +75,7 @@ class SosController extends Controller
 
         // Vets see only nearby active SOS (within 25km); admins see all
         if ($user->isVet()) {
-            $vetProfile = \App\Models\VetProfile::where('user_id', $user->id)->first();
+            $vetProfile = VetProfile::where('user_id', $user->id)->first();
             if ($vetProfile && $vetProfile->latitude && $vetProfile->longitude) {
                 $activeSos = $this->sosService->getActiveSosNearby(
                     (float) $vetProfile->latitude,
@@ -133,7 +136,7 @@ class SosController extends Controller
         // CRIT-05: For post-acceptance statuses, verify the acting vet is the assigned vet
         $postAcceptStatuses = ['vet_on_the_way', 'arrived', 'sos_in_progress', 'in_progress', 'treatment_in_progress', 'sos_completed', 'completed'];
         if ($isVet && in_array($newStatus, $postAcceptStatuses)) {
-            $vetProfile = \App\Models\VetProfile::where('user_id', $user->id)->first();
+            $vetProfile = VetProfile::where('user_id', $user->id)->first();
             if (!$vetProfile || $sosRequest->assigned_vet_id !== $vetProfile->id) {
                 return $this->forbidden('Only the assigned vet can update this SOS request.');
             }
@@ -149,7 +152,7 @@ class SosController extends Controller
 
             // If vet is accepting, attach their profile and response type
             if (in_array($newStatus, ['sos_accepted', 'acknowledged']) && $isVet) {
-                $vetProfile = \App\Models\VetProfile::where('user_id', $user->id)->first();
+                $vetProfile = VetProfile::where('user_id', $user->id)->first();
                 if ($vetProfile) {
                     $extra['vet_profile_id'] = $vetProfile->id;
                 }
@@ -168,6 +171,9 @@ class SosController extends Controller
                 'status' => [$e->getMessage()],
             ]);
         }
+
+        // Broadcast status change for real-time clients
+        broadcast(new SosStatusChanged($sosRequest))->toOthers();
 
         return $this->success('SOS status updated successfully', ['sos' => $sosRequest]);
     }
@@ -196,7 +202,7 @@ class SosController extends Controller
 
         // MED-07: Only the assigned vet can update location for this SOS
         if ($user->isVet()) {
-            $vetProfile = \App\Models\VetProfile::where('user_id', $user->id)->first();
+            $vetProfile = VetProfile::where('user_id', $user->id)->first();
             if (!$vetProfile || $sosRequest->assigned_vet_id !== $vetProfile->id) {
                 return $this->forbidden('Only the assigned vet can update location for this SOS.');
             }
@@ -207,6 +213,13 @@ class SosController extends Controller
             (float) $request->latitude,
             (float) $request->longitude
         );
+
+        // Broadcast location update for real-time tracking
+        broadcast(new SosLocationUpdated(
+            $sosRequest,
+            (float) $request->latitude,
+            (float) $request->longitude
+        ))->toOthers();
 
         return $this->success('Location updated', [
             'sos' => $sosRequest,

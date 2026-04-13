@@ -200,6 +200,7 @@ class PaymentFlowTest extends TestCase
             'user_id' => $this->user->id,
             'vet_profile_id' => $this->vetProfile->id,
             'payable_id' => $this->appointment->id,
+            'payable_type' => Appointment::class,
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
@@ -220,6 +221,7 @@ class PaymentFlowTest extends TestCase
             'user_id' => $this->user->id,
             'vet_profile_id' => $this->vetProfile->id,
             'payable_id' => $this->appointment->id,
+            'payable_type' => Appointment::class,
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
@@ -235,6 +237,7 @@ class PaymentFlowTest extends TestCase
             'user_id' => $this->user->id,
             'vet_profile_id' => $this->vetProfile->id,
             'payable_id' => $this->appointment->id,
+            'payable_type' => Appointment::class,
         ]);
 
         $otherUser = User::factory()->create();

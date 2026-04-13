@@ -37,6 +37,11 @@ class AppServiceProvider extends ServiceProvider
             \App\Contracts\AdminMetrics::class,
             \App\Services\AdminMetricsService::class
         );
+
+        $this->app->bind(
+            \App\Contracts\NotificationDispatcher::class,
+            \App\Services\FcmNotificationDispatcher::class
+        );
     }
 
     /**

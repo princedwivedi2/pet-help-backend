@@ -7,6 +7,8 @@ use Illuminate\Validation\Validator;
 
 class VetApplyRequest extends ApiFormRequest
 {
+    private const DEFAULT_PROFILE_PHOTO_HOSTS = ['cdn.pethelp.app', 'storage.pethelp.app'];
+
     public function authorize(): bool
     {
         return true; // Public endpoint — anyone can apply
@@ -21,7 +23,33 @@ class VetApplyRequest extends ApiFormRequest
             'password'             => ['required', 'string', 'min:8', 'regex:/[A-Z]/', 'regex:/[0-9]/', 'confirmed'],
             'phone_number'         => ['required_without:phone', 'nullable', 'string', 'max:20', 'regex:/^[\+]?[0-9\s\-\(\)]{7,20}$/'],
             'phone'                => ['required_without:phone_number', 'nullable', 'string', 'max:20', 'regex:/^[\+]?[0-9\s\-\(\)]{7,20}$/'],
-            'profile_photo'        => ['required', 'url', 'max:500'],
+            'profile_photo'        => [
+                'required',
+                'url',
+                'max:500',
+                'regex:/\.(jpe?g|png|webp|gif)(\?.*)?$/i',
+                function (string $attribute, $value, $fail) {
+                    $parsed = parse_url($value);
+                    if ($parsed === false) {
+                        $fail('Invalid profile photo URL.');
+                        return;
+                    }
+
+                    $host = strtolower($parsed['host'] ?? '');
+                    $scheme = strtolower($parsed['scheme'] ?? '');
+
+                    $allowedHosts = config('services.assets.trusted_hosts', self::DEFAULT_PROFILE_PHOTO_HOSTS);
+
+                    if ($scheme !== 'https') {
+                        $fail('Profile photos must be served over HTTPS.');
+                        return;
+                    }
+
+                    if (!in_array($host, $allowedHosts, true)) {
+                        $fail('Profile photo host is not trusted.');
+                    }
+                },
+            ],
 
             // Clinic info
             'clinic_name'          => ['required', 'string', 'max:200'],

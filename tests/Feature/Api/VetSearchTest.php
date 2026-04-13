@@ -41,7 +41,7 @@ class VetSearchTest extends TestCase
 
     public function test_vet_outside_radius_not_in_nearby_bucket(): void
     {
-        $this->makeApprovedVet(['latitude' => 19.0700, 'longitude' => 72.8700]);
+        $nearVet = $this->makeApprovedVet(['latitude' => 19.0700, 'longitude' => 72.8700]);
         $farVet = $this->makeApprovedVet(['latitude' => 19.2183, 'longitude' => 72.8700]);
 
         $response = $this->getJson('/api/v1/vets?lat=19.0700&lng=72.8700&radius_km=10');
@@ -49,6 +49,7 @@ class VetSearchTest extends TestCase
         $response->assertOk();
 
         $nearbyUuids = collect($response->json('data.nearby_vets'))->pluck('uuid');
+        $this->assertTrue($nearbyUuids->contains($nearVet->uuid), 'Near vet should appear in nearby_vets');
         $this->assertFalse($nearbyUuids->contains($farVet->uuid), 'Far vet should not appear in nearby_vets');
     }
 

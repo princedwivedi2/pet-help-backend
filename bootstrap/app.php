@@ -13,6 +13,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__.'/../routes/web.php',
         commands: __DIR__.'/../routes/console.php',
+        channels: __DIR__.'/../routes/channels.php',
         health: '/up',
         then: function () {
             Route::prefix('api/v1')
@@ -29,6 +30,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Enable CORS for API requests from mobile app
         $middleware->api(prepend: [
             \Illuminate\Http\Middleware\HandleCors::class,
+            \App\Http\Middleware\SecurityHeaders::class,
         ]);
 
         // Register named middleware aliases

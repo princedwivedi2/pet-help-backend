@@ -25,11 +25,13 @@ class User extends Authenticatable implements MustVerifyEmail
         'address',
         'city',
         'last_login_at',
+        'fcm_token',
     ];
 
     protected $hidden = [
         'password',
         'remember_token',
+        'fcm_token',
     ];
 
     protected function casts(): array

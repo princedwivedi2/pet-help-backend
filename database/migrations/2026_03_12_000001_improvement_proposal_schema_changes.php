@@ -7,8 +7,54 @@ use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
+    private const SOS_STATUS_BACKUP_COLUMN = 'legacy_status_before_standardization';
+
+    private const SOS_STATUS_FORWARD_MAP = [
+        'pending' => 'sos_pending',
+        'acknowledged' => 'sos_accepted',
+        'in_progress' => 'sos_in_progress',
+        'treatment_in_progress' => 'sos_in_progress',
+        'completed' => 'sos_completed',
+        'cancelled' => 'sos_cancelled',
+    ];
+
+    private const SOS_STATUS_ROLLBACK_MAP = [
+        'sos_pending' => 'pending',
+        'sos_accepted' => 'acknowledged',
+        'sos_in_progress' => 'in_progress',
+        'sos_completed' => 'completed',
+        'sos_cancelled' => 'cancelled',
+        'vet_on_the_way' => 'vet_on_the_way',
+        'arrived' => 'arrived',
+        'expired' => 'expired',
+    ];
+
+    private const SOS_STATUS_ENUM_VALUES = [
+        'sos_pending', 'sos_accepted', 'vet_on_the_way', 'arrived',
+        'sos_in_progress', 'sos_completed', 'sos_cancelled', 'expired',
+        'pending', 'acknowledged', 'in_progress', 'treatment_in_progress',
+        'completed', 'cancelled',
+    ];
+
+    private const SOS_STATUS_LEGACY_ENUM_VALUES = [
+        'pending', 'acknowledged', 'in_progress', 'treatment_in_progress', 'completed', 'cancelled',
+        'vet_on_the_way', 'arrived', 'expired'
+    ];
+
     public function up(): void
     {
+        $this->setSosStatusEnum(self::SOS_STATUS_ENUM_VALUES, 'sos_pending');
+
+        if (!Schema::hasColumn('sos_requests', self::SOS_STATUS_BACKUP_COLUMN)) {
+            Schema::table('sos_requests', function (Blueprint $table) {
+                $table->string(self::SOS_STATUS_BACKUP_COLUMN, 50)->nullable()->after('status');
+            });
+        }
+
+        DB::statement(
+            "UPDATE sos_requests SET `" . self::SOS_STATUS_BACKUP_COLUMN . "` = `status` WHERE `" . self::SOS_STATUS_BACKUP_COLUMN . "` IS NULL"
+        );
+
         // ── VetProfile enhancements ──
         Schema::table('vet_profiles', function (Blueprint $table) {
             if (!Schema::hasColumn('vet_profiles', 'online_fee')) {
@@ -37,26 +83,75 @@ return new class extends Migration
         });
 
         // ── Standardize SOS statuses (migrate old names to new) ──
-        DB::table('sos_requests')->where('status', 'pending')->update(['status' => 'sos_pending']);
-        DB::table('sos_requests')->where('status', 'acknowledged')->update(['status' => 'sos_accepted']);
-        DB::table('sos_requests')->where('status', 'in_progress')->update(['status' => 'sos_in_progress']);
-        DB::table('sos_requests')->where('status', 'treatment_in_progress')->update(['status' => 'sos_in_progress']);
-        DB::table('sos_requests')->where('status', 'completed')->update(['status' => 'sos_completed']);
-        DB::table('sos_requests')->where('status', 'cancelled')->update(['status' => 'sos_cancelled']);
+        foreach (self::SOS_STATUS_FORWARD_MAP as $from => $to) {
+            DB::table('sos_requests')->where('status', $from)->update(['status' => $to]);
+        }
     }
 
     public function down(): void
     {
-        Schema::table('vet_profiles', function (Blueprint $table) {
-            $table->dropColumn(['online_fee', 'max_home_visit_km']);
-        });
+        if (Schema::hasColumn('sos_requests', self::SOS_STATUS_BACKUP_COLUMN)) {
+            DB::statement(
+                "UPDATE sos_requests SET `status` = `" . self::SOS_STATUS_BACKUP_COLUMN . "` WHERE `" . self::SOS_STATUS_BACKUP_COLUMN . "` IS NOT NULL"
+            );
+        }
 
-        Schema::table('sos_requests', function (Blueprint $table) {
-            $table->dropColumn(['response_type', 'estimated_arrival_at']);
-        });
+        foreach (self::SOS_STATUS_ROLLBACK_MAP as $from => $to) {
+            DB::table('sos_requests')->where('status', $from)->update(['status' => $to]);
+        }
 
-        Schema::table('appointments', function (Blueprint $table) {
-            $table->dropColumn('payment_mode');
-        });
+        $this->setSosStatusEnum(self::SOS_STATUS_LEGACY_ENUM_VALUES, 'pending');
+
+        $vetProfileDrops = array_filter([
+            Schema::hasColumn('vet_profiles', 'online_fee') ? 'online_fee' : null,
+            Schema::hasColumn('vet_profiles', 'max_home_visit_km') ? 'max_home_visit_km' : null,
+        ]);
+        if (!empty($vetProfileDrops)) {
+            Schema::table('vet_profiles', function (Blueprint $table) use ($vetProfileDrops) {
+                $table->dropColumn($vetProfileDrops);
+            });
+        }
+
+        $sosDrops = array_filter([
+            Schema::hasColumn('sos_requests', 'response_type') ? 'response_type' : null,
+            Schema::hasColumn('sos_requests', 'estimated_arrival_at') ? 'estimated_arrival_at' : null,
+        ]);
+        if (!empty($sosDrops)) {
+            Schema::table('sos_requests', function (Blueprint $table) use ($sosDrops) {
+                $table->dropColumn($sosDrops);
+            });
+        }
+
+        if (Schema::hasColumn('appointments', 'payment_mode')) {
+            Schema::table('appointments', function (Blueprint $table) {
+                $table->dropColumn('payment_mode');
+            });
+        }
+
+        if (Schema::hasColumn('sos_requests', self::SOS_STATUS_BACKUP_COLUMN)) {
+            Schema::table('sos_requests', function (Blueprint $table) {
+                $table->dropColumn(self::SOS_STATUS_BACKUP_COLUMN);
+            });
+        }
+    }
+
+    private function setSosStatusEnum(array $values, ?string $default = null): void
+    {
+        if (DB::connection()->getDriverName() !== 'mysql') {
+            return;
+        }
+
+        // Assert that input values are simple, non-empty strings to prevent SQL injection.
+        assert(!empty($values), 'Values array cannot be empty.');
+        foreach ($values as $value) {
+            assert(is_string($value) && preg_match('/^[A-Z0-9_]+$/i', $value), "Invalid ENUM value: {$value}");
+        }
+        if ($default) {
+            assert(in_array($default, $values), "Default value '{$default}' not in provided values.");
+        }
+
+        $enumList = implode("','", $values);
+        $defaultClause = $default ? " DEFAULT '{$default}'" : '';
+        DB::statement("ALTER TABLE sos_requests MODIFY COLUMN status ENUM('{$enumList}') NOT NULL{$defaultClause}");
     }
 };

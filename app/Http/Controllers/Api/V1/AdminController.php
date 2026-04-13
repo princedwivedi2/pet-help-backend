@@ -21,6 +21,7 @@ use App\Services\VetVerificationService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class AdminController extends Controller
 {
@@ -286,10 +287,11 @@ class AdminController extends Controller
      */
     public function stats(): JsonResponse
     {
-        $paidPayments = \App\Models\Payment::paid();
+        // Cache dashboard stats for 2 minutes to reduce DB load
+        $stats = Cache::remember('admin:dashboard:stats', 120, function () {
+            $paidPayments = \App\Models\Payment::paid();
 
-        return $this->success('Dashboard stats retrieved', [
-            'stats' => [
+            return [
                 'total_users' => User::count(),
                 'total_vets' => VetProfile::count(),
                 'pending_vet_approvals' => VetProfile::byStatus('pending')->count(),
@@ -309,7 +311,11 @@ class AdminController extends Controller
                 'pending_reports' => \App\Models\CommunityReport::pending()->count(),
                 'platform_revenue' => (int) $paidPayments->sum('platform_fee'),
                 'gross_revenue' => (int) $paidPayments->sum('amount'),
-            ],
+            ];
+        });
+
+        return $this->success('Dashboard stats retrieved', [
+            'stats' => $stats,
         ]);
     }
 

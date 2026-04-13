@@ -204,6 +204,11 @@ class AppointmentService
 
         if ($cancelledBy->id === $appointment->user_id) {
             $hoursUntilAppointment = now()->diffInHours($appointment->scheduled_at, false);
+
+            if ($hoursUntilAppointment < 0) {
+                throw new \DomainException('Cannot cancel past appointments.');
+            }
+
             if ($hoursUntilAppointment < self::USER_CANCELLATION_CUTOFF_HOURS) {
                 throw new \DomainException('Appointments can only be cancelled at least 2 hours before scheduled time.');
             }
@@ -559,5 +564,220 @@ class AppointmentService
         }
 
         return $slots;
+    }
+
+    /**
+     * Reschedule an appointment to a new time.
+     * Max 3 reschedules allowed per appointment.
+     */
+    public function reschedule(Appointment $appointment, User $user, array $data): Appointment
+    {
+        return DB::transaction(function () use ($appointment, $user, $data) {
+            $appointment = Appointment::where('id', $appointment->id)->lockForUpdate()->first();
+
+            // Validate appointment can be rescheduled
+            if (!in_array($appointment->status, ['pending', 'accepted', 'confirmed'])) {
+                throw new \DomainException('Only pending, accepted, or confirmed appointments can be rescheduled.');
+            }
+
+            // Check reschedule limit
+            if ($appointment->reschedule_count >= 3) {
+                throw new \DomainException('Maximum reschedule limit (3) reached. Please cancel and create a new appointment.');
+            }
+
+            // Validate user is owner or vet
+            $isOwner = $user->id === $appointment->user_id;
+            $isVet = $user->isVet() && $user->vetProfile?->id === $appointment->vet_profile_id;
+
+            if (!$isOwner && !$isVet) {
+                throw new \DomainException('You do not have permission to reschedule this appointment.');
+            }
+
+            // Validate new scheduled_at
+            $newScheduledAt = Carbon::parse($data['scheduled_at']);
+            if ($newScheduledAt->isPast()) {
+                throw new \DomainException('Cannot reschedule to a past time.');
+            }
+
+            // Check for conflicts with other appointments
+            $durationMinutes = $appointment->duration_minutes ?? 30;
+            $newEnd = (clone $newScheduledAt)->addMinutes($durationMinutes);
+
+            $driver = DB::getDriverName();
+            $conflict = Appointment::where('vet_profile_id', $appointment->vet_profile_id)
+                ->where('id', '!=', $appointment->id)
+                ->whereIn('status', ['pending', 'accepted', 'confirmed', 'in_progress'])
+                ->lockForUpdate()
+                ->where(function ($q) use ($newScheduledAt, $newEnd, $driver) {
+                    if ($driver === 'sqlite') {
+                        $q->whereRaw('scheduled_at < ?', [$newEnd])
+                          ->whereRaw("julianday(scheduled_at, '+' || duration_minutes || ' minutes') > julianday(?)", [$newScheduledAt]);
+                    } else {
+                        $q->where('scheduled_at', '<', $newEnd)
+                          ->whereRaw('DATE_ADD(scheduled_at, INTERVAL duration_minutes MINUTE) > ?', [$newScheduledAt]);
+                    }
+                })
+                ->exists();
+
+            if ($conflict) {
+                throw new \DomainException('The new time slot conflicts with an existing booking.');
+            }
+
+            $previousScheduledAt = $appointment->scheduled_at;
+
+            // Update appointment
+            $appointment->update([
+                'scheduled_at' => $newScheduledAt,
+                'original_scheduled_at' => $appointment->original_scheduled_at ?? $previousScheduledAt,
+                'reschedule_count' => $appointment->reschedule_count + 1,
+                'reschedule_reason' => $data['reason'] ?? null,
+                'timezone' => $data['timezone'] ?? $appointment->timezone ?? 'Asia/Kolkata',
+            ]);
+
+            // Audit log
+            $this->auditService->log(
+                $user->id,
+                Appointment::class,
+                $appointment->id,
+                'rescheduled',
+                ['scheduled_at' => $previousScheduledAt->toIso8601String()],
+                ['scheduled_at' => $newScheduledAt->toIso8601String(), 'reason' => $data['reason'] ?? null],
+                "Appointment rescheduled (#{$appointment->reschedule_count})"
+            );
+
+            Log::info('Appointment rescheduled', [
+                'appointment_uuid' => $appointment->uuid,
+                'from' => $previousScheduledAt->toIso8601String(),
+                'to' => $newScheduledAt->toIso8601String(),
+                'reschedule_count' => $appointment->reschedule_count,
+            ]);
+
+            // Notify the other party
+            try {
+                $notifyUser = $isOwner
+                    ? $appointment->vetProfile?->user
+                    : $appointment->user;
+
+                $notifyUser?->notify(
+                    new AppointmentStatusNotification($appointment, 'rescheduled', [
+                        'previous_time' => $previousScheduledAt->toIso8601String(),
+                        'new_time' => $newScheduledAt->toIso8601String(),
+                    ])
+                );
+            } catch (\Throwable $e) {
+                report($e);
+            }
+
+            return $appointment->fresh(['user:id,name', 'vetProfile:id,user_id,uuid,clinic_name,vet_name', 'pet:id,name,species']);
+        });
+    }
+
+    /**
+     * Join waitlist for a vet on a specific date.
+     */
+    public function joinWaitlist(User $user, VetProfile $vetProfile, array $data): \App\Models\AppointmentWaitlist
+    {
+        // Check if already on waitlist
+        $existing = \App\Models\AppointmentWaitlist::where('user_id', $user->id)
+            ->where('vet_profile_id', $vetProfile->id)
+            ->where('preferred_date', $data['preferred_date'])
+            ->where('is_notified', false)
+            ->first();
+
+        if ($existing) {
+            throw new \DomainException('You are already on the waitlist for this vet on this date.');
+        }
+
+        return \App\Models\AppointmentWaitlist::create([
+            'uuid' => \Illuminate\Support\Str::uuid()->toString(),
+            'user_id' => $user->id,
+            'vet_profile_id' => $vetProfile->id,
+            'pet_id' => $data['pet_id'] ?? null,
+            'preferred_date' => $data['preferred_date'],
+            'preferred_time_start' => $data['preferred_time_start'] ?? null,
+            'preferred_time_end' => $data['preferred_time_end'] ?? null,
+            'consultation_type' => $data['consultation_type'] ?? 'clinic',
+            'expires_at' => Carbon::parse($data['preferred_date'])->endOfDay(),
+        ]);
+    }
+
+    /**
+     * Leave waitlist.
+     */
+    public function leaveWaitlist(User $user, string $uuid): bool
+    {
+        return \App\Models\AppointmentWaitlist::where('uuid', $uuid)
+            ->where('user_id', $user->id)
+            ->delete() > 0;
+    }
+
+    /**
+     * Get user's waitlist entries.
+     */
+    public function getUserWaitlist(User $user): \Illuminate\Database\Eloquent\Collection
+    {
+        return \App\Models\AppointmentWaitlist::where('user_id', $user->id)
+            ->where('is_notified', false)
+            ->where('expires_at', '>', now())
+            ->with(['vetProfile:id,uuid,clinic_name,vet_name', 'pet:id,name'])
+            ->orderBy('preferred_date')
+            ->get();
+    }
+
+    /**
+     * Notify waitlist users when a slot becomes available.
+     * Called when an appointment is cancelled.
+     */
+    public function notifyWaitlist(Appointment $cancelledAppointment): int
+    {
+        $notifiedCount = 0;
+
+        $waitlistEntries = \App\Models\AppointmentWaitlist::where('vet_profile_id', $cancelledAppointment->vet_profile_id)
+            ->where('preferred_date', $cancelledAppointment->scheduled_at->toDateString())
+            ->where('is_notified', false)
+            ->where('expires_at', '>', now())
+            ->get();
+
+        foreach ($waitlistEntries as $entry) {
+            try {
+                $entry->user->notify(
+                    new \App\Notifications\WaitlistSlotAvailableNotification($entry, $cancelledAppointment)
+                );
+                $entry->update([
+                    'is_notified' => true,
+                    'notified_at' => now(),
+                ]);
+                $notifiedCount++;
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
+        return $notifiedCount;
+    }
+
+    /**
+     * Process waitlist notifications for all recently cancelled/completed appointments.
+     * Called by scheduler.
+     */
+    public function processWaitlistNotifications(): int
+    {
+        $totalNotified = 0;
+
+        // Find appointments that were cancelled in the last 10 minutes
+        // that haven't triggered waitlist notifications yet
+        $recentCancellations = Appointment::where('status', Appointment::STATUS_CANCELLED)
+            ->where('updated_at', '>=', now()->subMinutes(10))
+            ->whereDoesntHave('waitlistNotificationsSent')
+            ->get();
+
+        foreach ($recentCancellations as $appointment) {
+            $totalNotified += $this->notifyWaitlist($appointment);
+        }
+
+        // Clean up expired waitlist entries
+        \App\Models\AppointmentWaitlist::where('expires_at', '<', now())->delete();
+
+        return $totalNotified;
     }
 }

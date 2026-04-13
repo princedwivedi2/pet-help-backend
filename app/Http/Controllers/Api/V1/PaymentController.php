@@ -77,7 +77,11 @@ class PaymentController extends Controller
                 paymentModel: $request->payment_model ?? 'platform_fee'
             );
 
-            return $this->success('Payment order created', $result);
+            return $this->success('Payment order created', [
+                'payment'      => $result,
+                'payment_uuid' => $result->uuid,
+                'razorpay_key' => config('services.razorpay.key_id'),
+            ]);
         } catch (\DomainException $e) {
             return $this->error($e->getMessage(), null, 422);
         }
@@ -147,9 +151,12 @@ class PaymentController extends Controller
         // HIGH-03 FIX: Validate amount against expected fee
         $expectedFee = null;
         if ($request->payable_type === 'appointment') {
-            $expectedFee = $payable->fee_amount ?? $payable->vetProfile?->consultation_fee;
-            if ($payable->appointment_type === 'home_visit' && $payable->vetProfile?->home_visit_fee) {
-                $expectedFee = $payable->fee_amount ?? $payable->vetProfile->home_visit_fee;
+            if ($payable->fee_amount !== null) {
+                $expectedFee = $payable->fee_amount;
+            } elseif ($payable->appointment_type === 'home_visit' && $payable->vetProfile?->home_visit_fee) {
+                $expectedFee = $payable->vetProfile->home_visit_fee;
+            } else {
+                $expectedFee = $payable->vetProfile?->consultation_fee;
             }
         } else {
             $expectedFee = $payable->emergency_charge;
@@ -281,6 +288,98 @@ class PaymentController extends Controller
         } catch (\DomainException $e) {
             return $this->error($e->getMessage(), null, 422);
         }
+    }
+
+    /**
+     * Vet requests a payout withdrawal.
+     * POST /api/v1/vet/wallet/payout-request
+     */
+    public function payoutRequest(Request $request): JsonResponse
+    {
+        $request->validate([
+            'amount'       => 'required|integer|min:1',
+            'payment_detail' => 'required|string|max:255',
+        ]);
+
+        $user       = $request->user();
+        $vetProfile = \App\Models\VetProfile::where('user_id', $user->id)->first();
+
+        if (!$vetProfile) {
+            return $this->notFound('Vet profile not found');
+        }
+
+        $wallet = \App\Models\VetWallet::where('vet_profile_id', $vetProfile->id)->first();
+
+        if (!$wallet || $wallet->balance < $request->amount) {
+            return $this->error('Insufficient wallet balance', null, 422);
+        }
+
+        \App\Models\WalletTransaction::create([
+            'vet_profile_id' => $vetProfile->id,
+            'type'           => 'payout_request',
+            'amount'         => $request->amount,
+            'balance_after'  => $wallet->balance,
+            'description'    => 'Payout request — ' . $request->payment_detail,
+        ]);
+
+        return $this->success('Payout request submitted. Admin will process it shortly.', [
+            'amount'  => $request->amount,
+            'balance' => $wallet->balance,
+        ]);
+    }
+
+    /**
+     * Handle Razorpay webhook events.
+     * POST /api/payments/webhook  (no auth — verified by HMAC signature)
+     */
+    public function webhook(Request $request): JsonResponse
+    {
+        $rawBody = $request->getContent();
+        $signature = $request->header('X-Razorpay-Signature', '');
+        $webhookSecret = config('services.razorpay.webhook_secret', '');
+
+        // Reject requests when webhook secret is not configured — never allow unverified events
+        if (empty($webhookSecret)) {
+            \Illuminate\Support\Facades\Log::critical('Razorpay webhook secret not configured — rejecting request');
+            return $this->error('Service not available', null, 503);
+        }
+
+        // Verify HMAC signature
+        $expectedSignature = hash_hmac('sha256', $rawBody, $webhookSecret);
+        if (!hash_equals($expectedSignature, $signature)) {
+            \Illuminate\Support\Facades\Log::warning('Razorpay webhook signature mismatch');
+            return $this->error('Invalid signature', null, 400);
+        }
+
+        $payload = json_decode($rawBody, true);
+        $event   = $payload['event'] ?? null;
+
+        if ($event === 'payment.captured') {
+            $razorpayOrderId  = $payload['payload']['payment']['entity']['order_id'] ?? null;
+            $razorpayPaymentId = $payload['payload']['payment']['entity']['id'] ?? null;
+
+            if ($razorpayOrderId) {
+                $payment = Payment::where('razorpay_order_id', $razorpayOrderId)
+                    ->whereNotIn('payment_status', ['paid', 'refunded', 'partially_refunded'])
+                    ->first();
+
+                if ($payment && $razorpayPaymentId) {
+                    $payment->update([
+                        'razorpay_payment_id' => $razorpayPaymentId,
+                        'payment_status'      => 'paid',
+                        'paid_at'             => now(),
+                    ]);
+
+                    if ($payment->vet_profile_id && $payment->vet_payout_amount > 0) {
+                        $this->paymentService->creditVetWalletPublic($payment);
+                    }
+
+                    $this->paymentService->updatePayableStatusPublic($payment);
+                }
+            }
+        }
+
+        return response()->json(['status' => 'ok']);
     }
 
     /**

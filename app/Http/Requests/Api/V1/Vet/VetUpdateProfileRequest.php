@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Api\V1\Vet;
 
 use App\Http\Requests\Api\ApiFormRequest;
+use Illuminate\Validation\Rule;
 
 class VetUpdateProfileRequest extends ApiFormRequest
 {
@@ -18,7 +19,7 @@ class VetUpdateProfileRequest extends ApiFormRequest
             'vet_name' => ['required', 'string', 'max:255'],
             'phone' => ['required', 'string', 'max:20'],
 
-            'profile_photo' => ['required', 'string', 'max:500'],
+            'profile_photo' => ['nullable', 'string', 'max:500'],
             'license_number' => ['required', 'string', 'max:100'],
             'qualification' => ['required', 'string', 'max:1000'],
             'clinic_address' => ['required', 'string', 'max:500'],
@@ -37,6 +38,7 @@ class VetUpdateProfileRequest extends ApiFormRequest
             'home_visit_fee' => ['nullable', 'integer', 'min:0'],
             'online_fee' => ['nullable', 'integer', 'min:0'],
             'consultation_types' => ['nullable', 'array'],
+            'consultation_types.*' => ['string', 'distinct', Rule::in(['clinic_visit', 'home_visit', 'online'])],
             'max_home_visit_km' => ['nullable', 'integer', 'min:0'],
 
             'degree_certificate' => ['nullable', 'string', 'max:500'],

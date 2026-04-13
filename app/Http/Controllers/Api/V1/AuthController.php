@@ -125,13 +125,18 @@ class AuthController extends Controller
     public function logout(Request $request): JsonResponse
     {
         $user = $request->user();
+
+        // Clear FCM token on logout so the device no longer receives push notifications
+        $user->update(['fcm_token' => null]);
+
         $currentToken = $user->currentAccessToken();
 
         if ($currentToken) {
             $currentToken->delete();
-        } else {
-            $user->tokens()->delete();
+            return $this->success('Logout successful');
         }
+
+        $user->tokens()->delete();
 
         return $this->success('Logout successful');
     }
@@ -338,5 +343,22 @@ class AuthController extends Controller
         $user->delete();
 
         return $this->success('Account deleted successfully');
+    }
+
+    // ─── Device Token (FCM) ─────────────────────────────────────────
+
+    /**
+     * Register or update the authenticated user's FCM device token.
+     * POST /api/v1/auth/device-token
+     */
+    public function registerDeviceToken(Request $request): JsonResponse
+    {
+        $request->validate([
+            'token' => ['required', 'string', 'max:500'],
+        ]);
+
+        $request->user()->update(['fcm_token' => $request->token]);
+
+        return $this->success('Device token registered successfully');
     }
 }

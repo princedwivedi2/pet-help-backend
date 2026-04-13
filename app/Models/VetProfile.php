@@ -221,4 +221,49 @@ class VetProfile extends Model
     {
         return 'uuid';
     }
+
+    /**
+     * Calculate and cache the average rating from visible, non-flagged reviews.
+     */
+    public function calculateAverageRating(): float
+    {
+        return $this->reviews()
+            ->visible()
+            ->notFlagged()
+            ->avg('rating') ?? 0.0;
+    }
+
+    /**
+     * Get the count of visible reviews.
+     */
+    public function getReviewCount(): int
+    {
+        return $this->reviews()
+            ->visible()
+            ->notFlagged()
+            ->count();
+    }
+
+    /**
+     * Get rating breakdown by star count.
+     */
+    public function getRatingBreakdown(): array
+    {
+        $breakdown = $this->reviews()
+            ->visible()
+            ->notFlagged()
+            ->selectRaw('rating, count(*) as count')
+            ->groupBy('rating')
+            ->pluck('count', 'rating')
+            ->toArray();
+
+        // Ensure all 5 ratings are represented
+        return [
+            5 => $breakdown[5] ?? 0,
+            4 => $breakdown[4] ?? 0,
+            3 => $breakdown[3] ?? 0,
+            2 => $breakdown[2] ?? 0,
+            1 => $breakdown[1] ?? 0,
+        ];
+    }
 }

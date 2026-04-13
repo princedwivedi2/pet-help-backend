@@ -4,6 +4,7 @@ namespace Database\Factories;
 
 use App\Models\Appointment;
 use App\Models\Payment;
+use App\Models\SosRequest;
 use App\Models\User;
 use App\Models\VetProfile;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -53,6 +54,7 @@ class PaymentFactory extends Factory
     {
         return $this->state(fn () => [
             'payable_type' => 'sos_request',
+            'payable_id' => SosRequest::factory(),
         ]);
     }
 

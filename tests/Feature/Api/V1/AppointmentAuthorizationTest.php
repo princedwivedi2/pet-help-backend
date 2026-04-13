@@ -27,7 +27,7 @@ class AppointmentAuthorizationTest extends TestCase
 
         $pet = Pet::factory()->forUser($owner)->create();
 
-        return Appointment::create([
+        return Appointment::factory()->create([
             'user_id' => $owner->id,
             'vet_profile_id' => $vetProfile->id,
             'pet_id' => $pet->id,

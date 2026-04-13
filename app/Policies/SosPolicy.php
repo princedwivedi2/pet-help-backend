@@ -62,6 +62,6 @@ class SosPolicy
 
     private function getUserVetProfile(User $user): ?VetProfile
     {
-        return VetProfile::where('user_id', $user->id)->first();
+        return $user->loadMissing('vetProfile')->vetProfile;
     }
 }
