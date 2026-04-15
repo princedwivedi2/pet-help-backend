@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('pet_reminders')) {
+            return;
+        }
+
         Schema::create('pet_reminders', function (Blueprint $table) {
             $table->id();
             $table->uuid('uuid')->unique();
@@ -43,8 +47,8 @@ return new class extends Migration
             $table->decimal('cost_estimate', 10, 2)->nullable();
             $table->text('notes')->nullable();
             
-            // Related medication
-            $table->foreignId('related_medication_id')->nullable()->constrained('pet_medications')->onDelete('set null');
+            // Related medication (FK intentionally added later because pet_medications is created in a later migration)
+            $table->unsignedBigInteger('related_medication_id')->nullable();
             
             $table->timestamps();
             $table->softDeletes();

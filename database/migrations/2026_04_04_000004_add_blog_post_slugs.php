@@ -11,21 +11,27 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('blog_posts', function (Blueprint $table) {
-            $table->string('slug', 255)->nullable()->unique()->after('title');
-        });
+        if (Schema::hasTable('blog_posts') && ! Schema::hasColumn('blog_posts', 'slug')) {
+            Schema::table('blog_posts', function (Blueprint $table) {
+                $table->string('slug', 255)->nullable()->unique();
+            });
+        }
 
         // Generate slugs for existing posts
-        \App\Models\BlogPost::whereNull('slug')->each(function ($post) {
-            $post->slug = \Illuminate\Support\Str::slug($post->title) . '-' . $post->uuid;
-            $post->saveQuietly();
-        });
+        if (Schema::hasTable('blog_posts') && Schema::hasColumn('blog_posts', 'slug')) {
+            \App\Models\BlogPost::whereNull('slug')->each(function ($post) {
+                $post->slug = \Illuminate\Support\Str::slug($post->title) . '-' . $post->uuid;
+                $post->saveQuietly();
+            });
+        }
     }
 
     public function down(): void
     {
-        Schema::table('blog_posts', function (Blueprint $table) {
-            $table->dropColumn('slug');
-        });
+        if (Schema::hasTable('blog_posts') && Schema::hasColumn('blog_posts', 'slug')) {
+            Schema::table('blog_posts', function (Blueprint $table) {
+                $table->dropColumn('slug');
+            });
+        }
     }
 };

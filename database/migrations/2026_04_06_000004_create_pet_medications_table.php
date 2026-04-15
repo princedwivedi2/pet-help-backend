@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -73,10 +74,35 @@ return new class extends Migration
             $table->index(['start_date', 'end_date']);
             $table->index(['refills_remaining', 'is_active']);
         });
+
+        if (Schema::hasTable('pet_reminders') && Schema::hasColumn('pet_reminders', 'related_medication_id') && ! $this->foreignKeyExists('pet_reminders', 'pet_reminders_related_medication_id_foreign')) {
+            Schema::table('pet_reminders', function (Blueprint $table) {
+                $table->foreign('related_medication_id', 'pet_reminders_related_medication_id_foreign')
+                    ->references('id')
+                    ->on('pet_medications')
+                    ->nullOnDelete();
+            });
+        }
     }
 
     public function down(): void
     {
+        if (Schema::hasTable('pet_reminders') && $this->foreignKeyExists('pet_reminders', 'pet_reminders_related_medication_id_foreign')) {
+            Schema::table('pet_reminders', function (Blueprint $table) {
+                $table->dropForeign('pet_reminders_related_medication_id_foreign');
+            });
+        }
+
         Schema::dropIfExists('pet_medications');
+    }
+
+    private function foreignKeyExists(string $tableName, string $constraintName): bool
+    {
+        $result = DB::selectOne(
+            'SELECT COUNT(*) AS count FROM information_schema.table_constraints WHERE constraint_schema = DATABASE() AND table_name = ? AND constraint_name = ? AND constraint_type = ? ',
+            [$tableName, $constraintName, 'FOREIGN KEY']
+        );
+
+        return (int) ($result->count ?? 0) > 0;
     }
 };
