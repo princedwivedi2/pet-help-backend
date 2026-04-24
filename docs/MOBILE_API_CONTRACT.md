@@ -9,6 +9,15 @@
 - Header: `Authorization: Bearer <token>`
 - Required for protected endpoints: `auth:sanctum`
 - Verified-email requirement for most business APIs: `verified`
+- Access token lifetime: use the current Sanctum token policy configured by the backend; if no explicit TTL is configured, treat tokens as persistent until logout/revocation
+- Refresh token: not issued by the current backend contract
+- Refresh flow: not available yet; clients must re-authenticate when a token is revoked, invalid, or rejected
+- Refresh failure responses: expect `401 Unauthorized` with an auth-required message
+- Client strategy:
+  - store tokens in secure OS storage only
+  - refresh UI state silently when a `401` indicates a stale session
+  - back off exponentially on repeated failures
+  - force re-login when the server rejects the token or the user signs out
 
 ## Role Behavior
 - `user`
@@ -148,6 +157,14 @@ Safety guarantees:
 - `POST /payments/{uuid}/refund`
 - `GET /payments/wallet`
 - Webhook callback: `POST /payments/webhook` (public, signature validated server-side)
+- Idempotency guidance:
+  - send an `Idempotency-Key` header on `POST /payments/create-order`, `POST /payments/verify`, and `POST /payments/{uuid}/refund`
+  - server should treat repeated keys as the same intent and return the original response
+  - recommended retention window: 24-72 hours
+  - generate a new UUID per distinct payment intent
+  - do not reuse keys across different operations
+  - client retry strategy: exponential backoff with the same key for the same intent only
+- Webhooks must remain signature-validated and idempotent on the server side
 
 ## Pet Document Access Rules
 - List/download pet documents: owner or admin only
@@ -162,7 +179,7 @@ Safety guarantees:
 - Server cron must run Laravel scheduler every minute:
 
 ```bash
-* * * * * php /path/to/project/artisan schedule:run >> /dev/null 2>&1
+* * * * * cd /path/to/project && php artisan schedule:run >> /dev/null 2>&1
 ```
 
 ## Client Implementation Notes

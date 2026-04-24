@@ -1,4 +1,4 @@
-﻿# API Documentation Status (Updated 2026-04-20)
+# API Documentation Status
 
 ## Current Position
 
@@ -9,7 +9,7 @@ This file records current API documentation status. Final mobile contract docume
 - Backend API version: `/api/v1`
 - Response envelope: `{ success, message, data, errors }`
 - Broad coverage across auth, pets, vets, SOS, appointments, payments, content, and admin modules
-- Approximate route count: 211
+- Route count: 211 routes as of 2026-04-20
 
 ## Documentation Gap to Close
 
@@ -34,3 +34,7 @@ Create and finalize:
 ## Release Rule
 
 Do not start full mobile implementation until the mobile API contract is reviewed and frozen.
+
+## Revision Note
+
+This file is maintained as a living status note and supersedes older route-count assumptions.
