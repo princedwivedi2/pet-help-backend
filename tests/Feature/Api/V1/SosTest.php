@@ -2,10 +2,13 @@
 
 namespace Tests\Feature\Api\V1;
 
+use App\Jobs\DispatchSosNearbyVetsJob;
 use App\Models\Pet;
 use App\Models\SosRequest;
 use App\Models\User;
+use App\Models\VetProfile;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class SosTest extends TestCase
@@ -33,6 +36,8 @@ class SosTest extends TestCase
 
     public function test_create_sos_success(): void
     {
+        Queue::fake();
+
         $user = $this->authUser();
         $pet = Pet::factory()->forUser($user)->create();
 
@@ -49,6 +54,8 @@ class SosTest extends TestCase
             'user_id' => $user->id,
             'status' => 'sos_pending',
         ]);
+
+        Queue::assertPushed(DispatchSosNearbyVetsJob::class, 1);
 
         // Verify incident log was auto-created
         $this->assertDatabaseHas('incident_logs', [
@@ -225,5 +232,52 @@ class SosTest extends TestCase
             ]);
 
         $response->assertStatus(404);
+    }
+
+    public function test_unassigned_vet_cannot_update_post_acceptance_status(): void
+    {
+        $owner = User::factory()->create(['role' => 'user']);
+        $assignedVetUser = User::factory()->create(['role' => 'vet']);
+        $unassignedVetUser = User::factory()->create(['role' => 'vet']);
+
+        $assignedVet = VetProfile::factory()->verified()->create(['user_id' => $assignedVetUser->id]);
+        VetProfile::factory()->verified()->create(['user_id' => $unassignedVetUser->id]);
+
+        $sos = SosRequest::factory()->forUser($owner)->create([
+            'status' => 'sos_accepted',
+            'assigned_vet_id' => $assignedVet->id,
+        ]);
+
+        $response = $this->actingAs($unassignedVetUser, 'sanctum')
+            ->putJson("{$this->prefix}/{$sos->uuid}/status", [
+                'status' => 'vet_on_the_way',
+                'vet_latitude' => 40.71,
+                'vet_longitude' => -74.00,
+            ]);
+
+        $response->assertStatus(403);
+    }
+
+    public function test_unassigned_vet_cannot_update_location(): void
+    {
+        $owner = User::factory()->create(['role' => 'user']);
+        $assignedVetUser = User::factory()->create(['role' => 'vet']);
+        $unassignedVetUser = User::factory()->create(['role' => 'vet']);
+
+        $assignedVet = VetProfile::factory()->verified()->create(['user_id' => $assignedVetUser->id]);
+        VetProfile::factory()->verified()->create(['user_id' => $unassignedVetUser->id]);
+
+        $sos = SosRequest::factory()->forUser($owner)->create([
+            'status' => 'sos_accepted',
+            'assigned_vet_id' => $assignedVet->id,
+        ]);
+
+        $response = $this->actingAs($unassignedVetUser, 'sanctum')
+            ->putJson("{$this->prefix}/{$sos->uuid}/location", [
+                'latitude' => 40.71,
+                'longitude' => -74.00,
+            ]);
+
+        $response->assertStatus(403);
     }
 }

@@ -7,6 +7,7 @@ use App\Events\SosStatusChanged;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\Sos\StoreSosRequest;
 use App\Http\Requests\Api\V1\Sos\UpdateSosStatusRequest;
+use App\Jobs\DispatchSosNearbyVetsJob;
 use App\Models\SosRequest;
 use App\Models\VetProfile;
 use App\Services\SosService;
@@ -51,21 +52,14 @@ class SosController extends Controller
             return $this->error('Unable to create SOS request. Please try again.', null, 409);
         }
 
-        // Find and notify nearby vets with actual SOS data (CRIT-04)
-        try {
-            $vetNotification = $this->sosService->findNearestVetsStub(
-                $request->latitude,
-                $request->longitude,
-                $sosRequest
-            );
-        } catch (\Throwable $e) {
-            report($e);
-            $vetNotification = ['vets_notified' => 0, 'vets' => [], 'error' => 'Vet search temporarily unavailable'];
-        }
+        DispatchSosNearbyVetsJob::dispatch($sosRequest->id);
 
         return $this->created('SOS request created successfully', [
             'sos' => $sosRequest,
-            'notification' => $vetNotification,
+            'notification' => [
+                'queued' => true,
+                'message' => 'Nearby vet alerts queued for dispatch.',
+            ],
         ]);
     }
 

@@ -83,6 +83,14 @@ class AuthController extends Controller
                 'verification_status' => $vetProfile->verification_status ?? $vetProfile->vet_status,
             ];
 
+            if ($vetProfile->isRejected()) {
+                return $this->forbidden('Vet account has been rejected. Please contact support for re-application guidance.');
+            }
+
+            if ($vetProfile->isSuspended()) {
+                return $this->forbidden('Vet account is suspended. Please contact support.');
+            }
+
             // Allow login for pending vets so they can finish onboarding, but surface a clear notice
             if (!$vetProfile->isApproved()) {
                 $loginNotice = 'Vet account is not approved yet. Appointment actions stay disabled until admin approval.';

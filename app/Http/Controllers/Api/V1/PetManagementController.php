@@ -322,7 +322,10 @@ class PetManagementController extends Controller
      */
     public function documentIndex(Request $request, Pet $pet): JsonResponse
     {
-        $this->authorize('view', $pet);
+        $accessError = $this->ensureDocumentReadAccess($request->user(), $pet);
+        if ($accessError instanceof JsonResponse) {
+            return $accessError;
+        }
 
         $documents = $pet->documents()
             ->with(['user:id,name', 'vetProfile:id,vet_name,clinic_name'])
@@ -430,22 +433,38 @@ class PetManagementController extends Controller
      */
     public function documentDownload(Pet $pet, PetDocument $document): JsonResponse
     {
-        $this->authorize('view', $pet);
+        $accessError = $this->ensureDocumentReadAccess(request()->user(), $pet);
+        if ($accessError instanceof JsonResponse) {
+            return $accessError;
+        }
         
         if ($document->pet_id !== $pet->id) {
             return $this->notFound('Document not found for this pet');
         }
 
-        if (!Storage::exists($document->file_path)) {
+        if (!Storage::disk('private')->exists($document->file_path)) {
             return $this->notFound('Document file not found');
         }
 
-        $url = Storage::temporaryUrl($document->file_path, now()->addMinutes(60));
+        $url = Storage::disk('private')->temporaryUrl($document->file_path, now()->addMinutes(60));
 
         return $this->success('Document download URL generated', [
             'download_url' => $url,
             'expires_at' => now()->addMinutes(60),
         ]);
+    }
+
+    private function ensureDocumentReadAccess($user, Pet $pet): ?JsonResponse
+    {
+        if (!$user) {
+            return $this->unauthorized('Unauthenticated.');
+        }
+
+        if ($user->id === $pet->user_id || $user->isAdmin()) {
+            return null;
+        }
+
+        return $this->forbidden('Only the pet owner or admin can access pet documents.');
     }
 
     // ──── Pet Medications ──────────────────────────────────────

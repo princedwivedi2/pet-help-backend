@@ -104,11 +104,6 @@ return new class extends Migration
                 });
             }
 
-            if (! Schema::hasColumn('pets', 'medical_notes')) {
-                Schema::table('pets', function (Blueprint $table) {
-                    $table->text('medical_notes')->nullable();
-                });
-            }
         }
     }
 
@@ -142,7 +137,6 @@ return new class extends Migration
                 'medications',
                 'medical_conditions',
                 'last_checkup_date',
-                'medical_notes',
             ];
 
             foreach ($petColumns as $column) {

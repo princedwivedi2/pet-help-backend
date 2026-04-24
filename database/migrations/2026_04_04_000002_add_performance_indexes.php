@@ -95,6 +95,28 @@ return new class extends Migration
 
     private function indexExists(string $tableName, string $indexName): bool
     {
+        $driver = DB::getDriverName();
+
+        if ($driver === 'sqlite') {
+            $indexes = DB::select("PRAGMA index_list('{$tableName}')");
+            foreach ($indexes as $index) {
+                if (($index->name ?? null) === $indexName) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        if ($driver === 'pgsql') {
+            $result = DB::selectOne(
+                'SELECT COUNT(*) AS count FROM pg_indexes WHERE schemaname = current_schema() AND tablename = ? AND indexname = ?',
+                [$tableName, $indexName]
+            );
+
+            return (int) ($result->count ?? 0) > 0;
+        }
+
         $result = DB::selectOne(
             'SELECT COUNT(*) AS count FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?',
             [$tableName, $indexName]

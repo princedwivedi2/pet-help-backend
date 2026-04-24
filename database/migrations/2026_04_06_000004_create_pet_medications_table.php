@@ -75,7 +75,10 @@ return new class extends Migration
             $table->index(['refills_remaining', 'is_active']);
         });
 
-        if (Schema::hasTable('pet_reminders') && Schema::hasColumn('pet_reminders', 'related_medication_id') && ! $this->foreignKeyExists('pet_reminders', 'pet_reminders_related_medication_id_foreign')) {
+        if (DB::getDriverName() !== 'sqlite'
+            && Schema::hasTable('pet_reminders')
+            && Schema::hasColumn('pet_reminders', 'related_medication_id')
+            && ! $this->foreignKeyExists('pet_reminders', 'pet_reminders_related_medication_id_foreign')) {
             Schema::table('pet_reminders', function (Blueprint $table) {
                 $table->foreign('related_medication_id', 'pet_reminders_related_medication_id_foreign')
                     ->references('id')
@@ -87,7 +90,9 @@ return new class extends Migration
 
     public function down(): void
     {
-        if (Schema::hasTable('pet_reminders') && $this->foreignKeyExists('pet_reminders', 'pet_reminders_related_medication_id_foreign')) {
+        if (DB::getDriverName() !== 'sqlite'
+            && Schema::hasTable('pet_reminders')
+            && $this->foreignKeyExists('pet_reminders', 'pet_reminders_related_medication_id_foreign')) {
             Schema::table('pet_reminders', function (Blueprint $table) {
                 $table->dropForeign('pet_reminders_related_medication_id_foreign');
             });
@@ -98,6 +103,21 @@ return new class extends Migration
 
     private function foreignKeyExists(string $tableName, string $constraintName): bool
     {
+        $driver = DB::getDriverName();
+
+        if ($driver === 'sqlite') {
+            return false;
+        }
+
+        if ($driver === 'pgsql') {
+            $result = DB::selectOne(
+                'SELECT COUNT(*) AS count FROM information_schema.table_constraints WHERE table_schema = current_schema() AND table_name = ? AND constraint_name = ? AND constraint_type = ?',
+                [$tableName, $constraintName, 'FOREIGN KEY']
+            );
+
+            return (int) ($result->count ?? 0) > 0;
+        }
+
         $result = DB::selectOne(
             'SELECT COUNT(*) AS count FROM information_schema.table_constraints WHERE constraint_schema = DATABASE() AND table_name = ? AND constraint_name = ? AND constraint_type = ? ',
             [$tableName, $constraintName, 'FOREIGN KEY']

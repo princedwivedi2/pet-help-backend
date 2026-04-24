@@ -4,6 +4,7 @@ use App\Services\AppointmentService;
 use App\Services\SosService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schedule;
 
 Artisan::command('inspire', function () {
@@ -73,7 +74,10 @@ Schedule::call(function () {
 
         foreach ($upcomingReminders as $reminder) {
             $user = $reminder->user;
-            if ($user && in_array('database', $reminder->notification_methods ?? ['database'])) {
+            $notificationKey = 'pets:upcoming-reminder:' . $reminder->id . ':' . $reminder->scheduled_at->timestamp;
+            $shouldNotify = Cache::add($notificationKey, true, now()->addMinutes(70));
+
+            if ($shouldNotify && $user && in_array('database', $reminder->notification_methods ?? ['database'])) {
                 $user->notify(new \App\Notifications\PetReminderNotification($reminder));
             }
         }
@@ -97,7 +101,11 @@ Schedule::call(function () {
 
         foreach ($overdueReminders as $reminder) {
             $user = $reminder->user;
-            if ($user) {
+            $windowBucket = now()->format('YmdH') . '-' . (int) floor(now()->minute / 30);
+            $notificationKey = 'pets:overdue-medication:' . $reminder->id . ':' . $windowBucket;
+            $shouldNotify = Cache::add($notificationKey, true, now()->addMinutes(31));
+
+            if ($shouldNotify && $user) {
                 $user->notify(new \App\Notifications\OverdueMedicationNotification($reminder));
             }
         }
@@ -122,7 +130,10 @@ Schedule::call(function () {
 
         foreach ($expiringDocuments as $document) {
             $user = $document->user;
-            if ($user) {
+            $notificationKey = 'pets:document-expiry:' . $document->id . ':' . now()->toDateString();
+            $shouldNotify = Cache::add($notificationKey, true, now()->endOfDay());
+
+            if ($shouldNotify && $user) {
                 $user->notify(new \App\Notifications\DocumentExpiryNotification($document));
             }
         }
@@ -134,3 +145,5 @@ Schedule::call(function () {
     ->name('pets:document-expiry-alerts')
     ->onOneServer()
     ->withoutOverlapping();
+
+// Production cron entry (server): * * * * * php /path/to/project/artisan schedule:run >> /dev/null 2>&1
