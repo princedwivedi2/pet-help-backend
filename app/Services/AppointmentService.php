@@ -363,7 +363,7 @@ class AppointmentService
         int $perPage = 15
     ): LengthAwarePaginator {
         $query = Appointment::forVet($vetProfileId)
-            ->with(['user:id,name,email,phone', 'pet:id,name,species']);
+            ->with(['user:id,name,email,phone,address,latitude,longitude', 'pet:id,name,species']);
 
         if ($status) {
             if ($status === 'cancelled') {
@@ -386,7 +386,7 @@ class AppointmentService
     public function findByUuid(string $uuid): ?Appointment
     {
         return Appointment::where('uuid', $uuid)
-            ->with(['user:id,name', 'vetProfile:id,user_id,uuid,clinic_name,vet_name', 'pet:id,name,species'])
+            ->with(['user:id,name,email,phone,address,latitude,longitude', 'vetProfile:id,user_id,uuid,clinic_name,vet_name,latitude,longitude,address', 'pet:id,name,species'])
             ->first();
     }
 
@@ -395,7 +395,7 @@ class AppointmentService
      */
     public function findByReference(string $reference): ?Appointment
     {
-        $query = Appointment::with(['user:id,name', 'vetProfile:id,user_id,uuid,clinic_name,vet_name', 'pet:id,name,species']);
+        $query = Appointment::with(['user:id,name,email,phone,address,latitude,longitude', 'vetProfile:id,user_id,uuid,clinic_name,vet_name,latitude,longitude,address', 'pet:id,name,species']);
 
         if (is_numeric($reference)) {
             return $query->where('id', (int) $reference)
