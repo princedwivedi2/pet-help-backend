@@ -363,7 +363,7 @@ class AppointmentService
         int $perPage = 15
     ): LengthAwarePaginator {
         $query = Appointment::forVet($vetProfileId)
-            ->with(['user:id,name,email,phone', 'pet:id,name,species']);
+            ->with(['user:id,name,email,phone,address,latitude,longitude', 'pet:id,name,species']);
 
         if ($status) {
             if ($status === 'cancelled') {
@@ -386,7 +386,7 @@ class AppointmentService
     public function findByUuid(string $uuid): ?Appointment
     {
         return Appointment::where('uuid', $uuid)
-            ->with(['user:id,name', 'vetProfile:id,user_id,uuid,clinic_name,vet_name', 'pet:id,name,species'])
+            ->with(['user:id,name,email,phone,address,latitude,longitude', 'vetProfile:id,user_id,uuid,clinic_name,vet_name,latitude,longitude,address', 'pet:id,name,species'])
             ->first();
     }
 
@@ -395,7 +395,7 @@ class AppointmentService
      */
     public function findByReference(string $reference): ?Appointment
     {
-        $query = Appointment::with(['user:id,name', 'vetProfile:id,user_id,uuid,clinic_name,vet_name', 'pet:id,name,species']);
+        $query = Appointment::with(['user:id,name,email,phone,address,latitude,longitude', 'vetProfile:id,user_id,uuid,clinic_name,vet_name,latitude,longitude,address', 'pet:id,name,species']);
 
         if (is_numeric($reference)) {
             return $query->where('id', (int) $reference)
@@ -733,7 +733,7 @@ class AppointmentService
         $notifiedCount = 0;
 
         $waitlistEntries = \App\Models\AppointmentWaitlist::where('vet_profile_id', $cancelledAppointment->vet_profile_id)
-            ->where('preferred_date', $cancelledAppointment->scheduled_at->toDateString())
+            ->whereDate('preferred_date', $cancelledAppointment->scheduled_at->toDateString())
             ->where('is_notified', false)
             ->where('expires_at', '>', now())
             ->get();
@@ -765,13 +765,22 @@ class AppointmentService
         $totalNotified = 0;
 
         // Find appointments that were cancelled in the last 10 minutes
-        // that haven't triggered waitlist notifications yet
-        $recentCancellations = Appointment::where('status', Appointment::STATUS_CANCELLED)
+        // and still have pending waitlist entries.
+        $recentCancellations = Appointment::whereIn('status', ['cancelled', 'cancelled_by_user', 'cancelled_by_vet'])
             ->where('updated_at', '>=', now()->subMinutes(10))
-            ->whereDoesntHave('waitlistNotificationsSent')
             ->get();
 
         foreach ($recentCancellations as $appointment) {
+            $hasPendingWaitlist = \App\Models\AppointmentWaitlist::where('vet_profile_id', $appointment->vet_profile_id)
+                ->whereDate('preferred_date', $appointment->scheduled_at->toDateString())
+                ->where('is_notified', false)
+                ->where('expires_at', '>', now())
+                ->exists();
+
+            if (!$hasPendingWaitlist) {
+                continue;
+            }
+
             $totalNotified += $this->notifyWaitlist($appointment);
         }
 

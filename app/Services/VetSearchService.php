@@ -26,6 +26,12 @@ class VetSearchService
         $distanceExpr = $this->haversineFormula($latitude, $longitude);
         $isSqlite = DB::getDriverName() === 'sqlite';
 
+        if ($isSqlite) {
+            $latDelta = $radiusKm / 111;
+            $cosLat = max(abs(cos(deg2rad($latitude))), 0.01);
+            $lonDelta = $radiusKm / (111 * $cosLat);
+        }
+
         $query = $this->baseApprovedQuery($emergencyOnly, $availableOnly, $specialization, $minRating)
             ->whereNotNull('latitude')
             ->whereNotNull('longitude')
@@ -37,6 +43,8 @@ class VetSearchService
             ->selectRaw($distanceExpr . ' AS distance_km');
 
         if ($isSqlite) {
+            $query->whereBetween('latitude', [$latitude - $latDelta, $latitude + $latDelta])
+                ->whereBetween('longitude', [$longitude - $lonDelta, $longitude + $lonDelta]);
             $query->whereRaw($distanceExpr . ' <= ?', [$radiusKm]);
         } else {
             $query->having('distance_km', '<=', $radiusKm);
@@ -91,6 +99,12 @@ class VetSearchService
             $distanceExpr = $this->haversineFormula($latitude, $longitude);
             $isSqlite = DB::getDriverName() === 'sqlite';
 
+            if ($isSqlite) {
+                $latDelta = $radiusKm / 111;
+                $cosLat = max(abs(cos(deg2rad($latitude))), 0.01);
+                $lonDelta = $radiusKm / (111 * $cosLat);
+            }
+
             $nearbyVets = (clone $base)
                 ->whereNotNull('latitude')
                 ->whereNotNull('longitude')
@@ -104,6 +118,8 @@ class VetSearchService
                 ->limit($limit);
 
             if ($isSqlite) {
+                $nearbyVets->whereBetween('latitude', [$latitude - $latDelta, $latitude + $latDelta])
+                    ->whereBetween('longitude', [$longitude - $lonDelta, $longitude + $lonDelta]);
                 $nearbyVets->whereRaw($distanceExpr . ' <= ?', [$radiusKm]);
             } else {
                 $nearbyVets->having('distance_km', '<=', $radiusKm);

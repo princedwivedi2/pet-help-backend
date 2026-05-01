@@ -26,7 +26,7 @@ class VetOnboardingFlowTest extends TestCase
             'password_confirmation' => 'Password123!',
             'clinic_name' => 'Test Veterinary Clinic',
             'phone' => '9876543210',
-            'profile_photo' => 'https://example.com/photo.jpg',
+            'profile_photo' => 'https://cdn.pethelp.app/photo.jpg',
             'license_number' => 'VET123456',
             'clinic_address' => '123 Vet Street',
             'city' => 'Mumbai',

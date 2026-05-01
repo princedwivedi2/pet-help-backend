@@ -12,10 +12,10 @@ use App\Services\VetProfileCompletionService;
 use App\Services\VetOnboardingService;
 use App\Traits\ApiResponse;
 use Illuminate\Database\QueryException;
-use Illuminate\Http\BinaryFileResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class VetOnboardingController extends Controller
 {
@@ -94,6 +94,8 @@ class VetOnboardingController extends Controller
             return $this->notFound('Vet profile not found.');
         }
 
+        $this->vetOnboardingService->ensureDocumentsPrivate($vetProfile);
+
         return $this->success('Vet profile retrieved successfully', [
             'vet_profile' => $vetProfile,
             'profile_status' => $this->vetProfileCompletionService->buildCompletionPayload($vetProfile),
@@ -164,6 +166,8 @@ class VetOnboardingController extends Controller
             return $this->notFound('Vet profile not found.');
         }
 
+        $this->vetOnboardingService->ensureDocumentsPrivate($vetProfile);
+
         $path = (string) ($vetProfile->{$fieldMap[$type]} ?? '');
         if ($path === '') {
             return $this->notFound('Document not uploaded yet.');
@@ -178,12 +182,62 @@ class VetOnboardingController extends Controller
         $mime = Storage::disk($disk)->mimeType($path) ?: 'application/octet-stream';
 
         $originalName = basename($path);
-        $sanitizedName = preg_replace('/[\r\n"\\]+/', '', $originalName) ?: 'document';
+        $sanitizedName = preg_replace('/[\r\n"\\\\]+/', '', $originalName) ?: 'document';
         $encodedName = rawurlencode($sanitizedName);
 
         return response()->file($absolutePath, [
             'Content-Type' => $mime,
             // Include RFC5987 filename* to keep browsers honest while preventing header injection
+            'Content-Disposition' => sprintf('inline; filename="%s"; filename*=UTF-8\'\'%s', $sanitizedName, $encodedName),
+        ]);
+    }
+
+    /**
+     * View a vet document as admin (verification/review usage).
+     *
+     * GET /api/v1/admin/vets/{uuid}/documents/{type}
+     */
+    public function adminViewDocument(string $uuid, string $type): JsonResponse|BinaryFileResponse
+    {
+        $fieldMap = [
+            'license' => 'license_document_url',
+            'degree' => 'degree_certificate_url',
+            'id_proof' => 'government_id_url',
+        ];
+
+        if (!isset($fieldMap[$type])) {
+            return $this->validationError('Invalid document type.', [
+                'type' => ['Allowed values: license, degree, id_proof.'],
+            ]);
+        }
+
+        $vetProfile = VetProfile::where('uuid', $uuid)->first();
+
+        if (!$vetProfile) {
+            return $this->notFound('Vet profile not found.');
+        }
+
+        $this->vetOnboardingService->ensureDocumentsPrivate($vetProfile);
+
+        $path = (string) ($vetProfile->{$fieldMap[$type]} ?? '');
+        if ($path === '') {
+            return $this->notFound('Document not uploaded yet.');
+        }
+
+        $disk = $this->resolveDocumentDisk($path);
+        if (!$disk) {
+            return $this->notFound('Document file not found in storage.');
+        }
+
+        $absolutePath = Storage::disk($disk)->path($path);
+        $mime = Storage::disk($disk)->mimeType($path) ?: 'application/octet-stream';
+
+        $originalName = basename($path);
+        $sanitizedName = preg_replace('/[\r\n"\\\\]+/', '', $originalName) ?: 'document';
+        $encodedName = rawurlencode($sanitizedName);
+
+        return response()->file($absolutePath, [
+            'Content-Type' => $mime,
             'Content-Disposition' => sprintf('inline; filename="%s"; filename*=UTF-8\'\'%s', $sanitizedName, $encodedName),
         ]);
     }

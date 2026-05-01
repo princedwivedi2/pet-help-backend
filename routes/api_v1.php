@@ -318,6 +318,7 @@ Route::middleware(['auth:sanctum', 'verified', 'role:admin'])->prefix('admin')->
     Route::get('vets/unverified', [AdminController::class, 'unverifiedVets']);
     Route::get('vets/{uuid}', [AdminController::class, 'showVet']);
     Route::get('vets/{uuid}/review', [AdminController::class, 'reviewVet']);
+    Route::get('vets/{uuid}/documents/{type}', [VetOnboardingController::class, 'adminViewDocument']);
     Route::put('vets/{uuid}/approve', [AdminController::class, 'approveVet']);
     Route::patch('vets/{uuid}/approve', [AdminController::class, 'approveVet']);
     Route::put('vets/{uuid}/reject', [AdminController::class, 'rejectVet']);

@@ -219,6 +219,79 @@ class VetOnboardingService
     }
 
     /**
+     * Ensure sensitive vet documents are stored on private disk.
+     *
+     * Moves any legacy files from public disk to local private storage.
+     */
+    public function ensureDocumentsPrivate(VetProfile $vetProfile): void
+    {
+        $singlePathFields = [
+            'license_document_url',
+            'degree_certificate_url',
+            'government_id_url',
+        ];
+
+        foreach ($singlePathFields as $field) {
+            $path = (string) ($vetProfile->{$field} ?? '');
+            if ($path === '') {
+                continue;
+            }
+
+            $migratedPath = $this->movePublicDocumentToPrivate($path);
+            if ($migratedPath !== $path) {
+                $vetProfile->{$field} = $migratedPath;
+            }
+        }
+
+        $verificationDocuments = $vetProfile->verification_documents ?? [];
+        $changed = false;
+        if (is_array($verificationDocuments)) {
+            foreach ($verificationDocuments as $index => $path) {
+                if (!is_string($path) || $path === '') {
+                    continue;
+                }
+
+                $migratedPath = $this->movePublicDocumentToPrivate($path);
+                if ($migratedPath !== $path) {
+                    $verificationDocuments[$index] = $migratedPath;
+                    $changed = true;
+                }
+            }
+        }
+
+        if ($changed) {
+            $vetProfile->verification_documents = $verificationDocuments;
+        }
+
+        if ($vetProfile->isDirty()) {
+            $vetProfile->save();
+        }
+    }
+
+    private function movePublicDocumentToPrivate(string $path): string
+    {
+        if (!Storage::disk('public')->exists($path) || Storage::disk('local')->exists($path)) {
+            return $path;
+        }
+
+        $stream = Storage::disk('public')->readStream($path);
+        if ($stream === false) {
+            return $path;
+        }
+
+        $written = Storage::disk('local')->writeStream($path, $stream);
+        if (is_resource($stream)) {
+            fclose($stream);
+        }
+
+        if ($written) {
+            Storage::disk('public')->delete($path);
+        }
+
+        return $path;
+    }
+
+    /**
      * Get paginated list of vets by status.
      */
     

@@ -19,7 +19,7 @@ class VetUpdateProfileRequest extends ApiFormRequest
             'vet_name' => ['required', 'string', 'max:255'],
             'phone' => ['required', 'string', 'max:20'],
 
-            'profile_photo' => ['nullable', 'string', 'max:500'],
+            'profile_photo' => ['required', 'string', 'max:500'],
             'license_number' => ['required', 'string', 'max:100'],
             'qualification' => ['required', 'string', 'max:1000'],
             'clinic_address' => ['required', 'string', 'max:500'],
@@ -33,7 +33,7 @@ class VetUpdateProfileRequest extends ApiFormRequest
             'specialization' => ['nullable', 'string', 'max:150'],
             'services' => ['required', 'array', 'min:1'],
             'accepted_species' => ['required', 'array', 'min:1'],
-            'working_hours' => ['nullable', 'array'],
+            'working_hours' => ['required', 'array'],
             'consultation_fee' => ['required', 'integer', 'min:0'],
             'home_visit_fee' => ['nullable', 'integer', 'min:0'],
             'online_fee' => ['nullable', 'integer', 'min:0'],
