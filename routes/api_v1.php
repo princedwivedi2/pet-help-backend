@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\V1\PetController;
 use App\Http\Controllers\Api\V1\PetMedicalRecordController;
 use App\Http\Controllers\Api\V1\ReviewController;
 use App\Http\Controllers\Api\V1\SosController;
+use App\Http\Controllers\Api\V1\SubscriptionController;
 use App\Http\Controllers\Api\V1\VetController;
 use App\Http\Controllers\Api\V1\VetOnboardingController;
 use App\Http\Controllers\Api\V1\VisitRecordController;
@@ -280,6 +281,12 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         // GET is intentionally outside the throttle group — reading history is cheap and not rate-limited
         Route::get('/{uuid}/messages', [\App\Http\Controllers\Api\V1\ChatbotController::class, 'messages']);
     });
+
+    // ─── Subscriptions ───────────────────────────────────────────────
+    Route::middleware('throttle:20,1')->prefix('subscriptions')->group(function () {
+        Route::post('/', [SubscriptionController::class, 'purchase']);
+        Route::get('/active', [SubscriptionController::class, 'active']);
+    });
 });
 
 // ─── Vet-only routes (require vet role) ─────────────────────────────
@@ -342,6 +349,7 @@ Route::middleware(['auth:sanctum', 'verified', 'role:admin'])->prefix('admin')->
     Route::get('revenue', [AdminController::class, 'revenue']);
     Route::get('payments', [AdminController::class, 'payments']);
     Route::get('payouts/pending', [AdminController::class, 'pendingPayouts']);
+    Route::post('payouts/{vet_uuid}/process', [AdminController::class, 'processPayoutRequest']);
 
     // Audit Logs
     Route::get('audit-logs', [AdminController::class, 'auditLogs']);
