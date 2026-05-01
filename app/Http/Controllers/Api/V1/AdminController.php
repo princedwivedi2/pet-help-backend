@@ -880,6 +880,84 @@ class AdminController extends Controller
     }
 
     /**
+     * Process (approve) a pending payout request for a vet.
+     *
+     * POST /api/v1/admin/payouts/{vet_uuid}/process
+     * Body: { "notes": "optional admin note" }
+     *
+     * - Debits wallet.balance and wallet.pending_payout by the requested amount.
+     * - Credits wallet.total_paid_out by the same amount.
+     * - Creates a payout_completed WalletTransaction entry.
+     * - Idempotent: returns 422 if no pending payout_request exists.
+     */
+    public function processPayoutRequest(Request $request, string $vet_uuid): JsonResponse
+    {
+        $vetProfile = \App\Models\VetProfile::where('uuid', $vet_uuid)->first();
+
+        if (!$vetProfile) {
+            return $this->notFound('Vet profile not found');
+        }
+
+        try {
+            $result = \Illuminate\Support\Facades\DB::transaction(function () use ($vetProfile, $request) {
+                $wallet = \App\Models\VetWallet::where('vet_profile_id', $vetProfile->id)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$wallet || $wallet->pending_payout <= 0) {
+                    throw new \DomainException('No pending payout exists for this vet.');
+                }
+
+                // Guard: no double-processing — check for an unprocessed payout_request
+                $pendingTx = \App\Models\WalletTransaction::where('vet_profile_id', $vetProfile->id)
+                    ->where('type', 'payout_request')
+                    ->where('status', 'pending')
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$pendingTx) {
+                    throw new \DomainException('No unprocessed payout request found for this vet.');
+                }
+
+                $payoutAmount = $pendingTx->amount;
+
+                // Clamp to available balance to avoid going negative
+                $debit = min($payoutAmount, $wallet->balance);
+
+                $wallet->decrement('balance', $debit);
+                $wallet->decrement('pending_payout', min($payoutAmount, $wallet->pending_payout));
+                $wallet->increment('total_paid_out', $debit);
+
+                $newBalance = max(0, $wallet->fresh()->balance);
+
+                // Mark the original request as completed
+                $pendingTx->update(['status' => 'completed']);
+
+                // Create the completion ledger entry
+                $completedTx = \App\Models\WalletTransaction::create([
+                    'vet_profile_id' => $vetProfile->id,
+                    'type'           => 'payout_completed',
+                    'amount'         => $debit,
+                    'balance_after'  => $newBalance,
+                    'status'         => 'completed',
+                    'description'    => 'Payout approved by admin'
+                        . ($request->filled('notes') ? ' — ' . $request->notes : ''),
+                ]);
+
+                return [
+                    'payout_amount' => $debit,
+                    'new_balance'   => $newBalance,
+                    'transaction'   => $completedTx,
+                ];
+            });
+        } catch (\DomainException $e) {
+            return $this->error($e->getMessage(), null, 422);
+        }
+
+        return $this->success('Payout processed successfully', $result);
+    }
+
+    /**
      * List all payments with filters.
      *
      * GET /api/v1/admin/payments

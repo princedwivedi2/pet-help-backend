@@ -26,7 +26,7 @@ return new class extends Migration
             $table->foreignId('vet_profile_id')->constrained()->onDelete('cascade');
             $table->foreignId('payment_id')->nullable()->constrained()->onDelete('set null');
 
-            $table->enum('type', ['credit', 'debit', 'payout', 'refund_debit']);
+            $table->enum('type', ['credit', 'debit', 'payout', 'refund_debit', 'payout_request', 'payout_completed']);
             $table->unsignedInteger('amount');
             $table->unsignedBigInteger('balance_after');
             $table->string('description', 500)->nullable();

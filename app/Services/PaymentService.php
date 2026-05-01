@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\Payment;
+use App\Models\Subscription;
+use App\Models\SubscriptionPlan;
 use App\Models\VetWallet;
 use App\Models\WalletTransaction;
 use Illuminate\Support\Facades\DB;
@@ -476,5 +478,134 @@ class PaymentService
             ->orderByDesc('pending_payout')
             ->get()
             ->toArray();
+    }
+
+    // ─── Subscriptions ───────────────────────────────────────────────
+
+    /**
+     * Create a Razorpay order for a subscription plan purchase.
+     */
+    public function createSubscriptionOrder(int $userId, SubscriptionPlan $plan): Payment
+    {
+        return DB::transaction(function () use ($userId, $plan) {
+            // Prevent duplicate pending subscription payments for the same plan
+            $existing = Payment::where('payable_type', 'subscription')
+                ->where('payable_id', $plan->id)
+                ->where('user_id', $userId)
+                ->whereIn('payment_status', ['pending', 'created', 'authorized'])
+                ->lockForUpdate()
+                ->first();
+
+            if ($existing) {
+                throw new \DomainException('A pending payment for this plan already exists.');
+            }
+
+            $razorpayOrder = $this->createRazorpayOrder($plan->price, 'INR');
+
+            $payment = Payment::create([
+                'payable_type'      => 'subscription',
+                'payable_id'        => $plan->id,
+                'user_id'           => $userId,
+                'vet_profile_id'    => null,
+                'razorpay_order_id' => $razorpayOrder['id'] ?? null,
+                'amount'            => $plan->price,
+                'platform_fee'      => $plan->price,
+                'commission_amount' => 0,
+                'vet_payout_amount' => 0,
+                'payment_model'     => 'platform_fee',
+                'payment_mode'      => 'online',
+                'payment_status'    => 'created',
+                'currency'          => 'INR',
+                'razorpay_response' => $razorpayOrder,
+            ]);
+
+            $this->auditService->log(
+                $userId,
+                Payment::class,
+                $payment->id,
+                'created',
+                null,
+                ['amount' => $plan->price, 'plan_uuid' => $plan->uuid, 'razorpay_order_id' => $payment->razorpay_order_id],
+                'Subscription order created'
+            );
+
+            return $payment;
+        });
+    }
+
+    /**
+     * Verify Razorpay subscription payment and activate the subscription.
+     */
+    public function verifySubscriptionPayment(
+        string $razorpayOrderId,
+        string $razorpayPaymentId,
+        string $razorpaySignature,
+        int $userId
+    ): Subscription {
+        return DB::transaction(function () use ($razorpayOrderId, $razorpayPaymentId, $razorpaySignature, $userId) {
+            $payment = Payment::where('razorpay_order_id', $razorpayOrderId)
+                ->where('user_id', $userId)
+                ->where('payable_type', 'subscription')
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($payment->isPaid()) {
+                // Idempotent: return existing subscription
+                $subscription = Subscription::where('payment_id', $payment->id)->firstOrFail();
+                return $subscription;
+            }
+
+            // Verify Razorpay signature
+            $expectedSignature = hash_hmac(
+                'sha256',
+                $razorpayOrderId . '|' . $razorpayPaymentId,
+                $this->razorpayKeySecret
+            );
+
+            if (!hash_equals($expectedSignature, $razorpaySignature)) {
+                $payment->update([
+                    'payment_status' => 'failed',
+                    'failure_reason' => 'Signature verification failed',
+                ]);
+                throw new \DomainException('Payment verification failed.');
+            }
+
+            $payment->update([
+                'razorpay_payment_id' => $razorpayPaymentId,
+                'razorpay_signature'  => $razorpaySignature,
+                'payment_status'      => 'paid',
+                'paid_at'             => now(),
+            ]);
+
+            /** @var SubscriptionPlan $plan */
+            $plan = SubscriptionPlan::findOrFail($payment->payable_id);
+
+            $subscription = Subscription::create([
+                'user_id'              => $userId,
+                'subscription_plan_id' => $plan->id,
+                'payment_id'           => $payment->id,
+                'status'               => 'active',
+                'starts_at'            => now(),
+                'ends_at'              => now()->addDays($plan->duration_days),
+            ]);
+
+            $this->auditService->log(
+                $userId,
+                Subscription::class,
+                $subscription->id,
+                'activated',
+                null,
+                ['plan_uuid' => $plan->uuid, 'ends_at' => $subscription->ends_at],
+                'Subscription activated'
+            );
+
+            Log::info('Subscription activated', [
+                'user_id'           => $userId,
+                'plan_uuid'         => $plan->uuid,
+                'subscription_uuid' => $subscription->uuid,
+            ]);
+
+            return $subscription;
+        });
     }
 }
