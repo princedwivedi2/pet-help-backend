@@ -22,6 +22,8 @@ class SearchVetsRequest extends FormRequest
             'emergency_only' => ['nullable', 'boolean'],
             'city' => ['nullable', 'string', 'max:100'],
             'specialization' => ['nullable', 'string', 'max:100'],
+            'languages' => ['nullable', 'array'],
+            'languages.*' => ['string', 'max:10'],
             'min_rating' => ['nullable', 'numeric', 'min:0', 'max:5'],
             'sort_by' => ['nullable', Rule::in(['distance', 'rating'])],
             'limit' => ['nullable', 'integer', 'min:1', 'max:100'],

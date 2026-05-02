@@ -21,7 +21,8 @@ class VetSearchService
         int $limit = 20,
         ?string $city = null,
         ?string $specialization = null,
-        ?float $minRating = null
+        ?float $minRating = null,
+        ?array $languages = null
     ): Collection {
         $distanceExpr = $this->haversineFormula($latitude, $longitude);
         $isSqlite = DB::getDriverName() === 'sqlite';
@@ -32,7 +33,7 @@ class VetSearchService
             $lonDelta = $radiusKm / (111 * $cosLat);
         }
 
-        $query = $this->baseApprovedQuery($emergencyOnly, $availableOnly, $specialization, $minRating)
+        $query = $this->baseApprovedQuery($emergencyOnly, $availableOnly, $specialization, $minRating, $languages)
             ->whereNotNull('latitude')
             ->whereNotNull('longitude')
             ->where(function ($q) {
@@ -80,10 +81,11 @@ class VetSearchService
         bool $availableOnly = false,
         ?string $specialization = null,
         ?float $minRating = null,
+        ?array $languages = null,
         int $limit = 30
     ): array {
         $limit = max(1, min($limit, 100));
-        $base = $this->baseApprovedQuery($emergencyOnly, $availableOnly, $specialization, $minRating);
+        $base = $this->baseApprovedQuery($emergencyOnly, $availableOnly, $specialization, $minRating, $languages);
 
         $allQuery = (clone $base)->select('vet_profiles.*');
         if ($latitude !== null && $longitude !== null) {
@@ -198,7 +200,8 @@ class VetSearchService
         bool $emergencyOnly,
         bool $availableOnly,
         ?string $specialization,
-        ?float $minRating
+        ?float $minRating,
+        ?array $languages = null
     ): Builder {
         $query = VetProfile::query()->active()->verified();
 
@@ -225,6 +228,14 @@ class VetSearchService
                 $q->where('specialization', 'like', '%' . $escaped . '%')
                     ->orWhere('qualifications', 'like', '%' . $escaped . '%')
                     ->orWhereJsonContains('services', $specialization);
+            });
+        }
+
+        if ($languages && !empty($languages)) {
+            $query->where(function ($q) use ($languages) {
+                foreach ($languages as $language) {
+                    $q->orWhereJsonContains('languages', $language);
+                }
             });
         }
 

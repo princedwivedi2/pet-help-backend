@@ -30,6 +30,7 @@ class VetController extends Controller
             emergencyOnly: $request->boolean('emergency_only', false),
             availableOnly: $request->boolean('available_only', false),
             specialization: $request->specialization,
+            languages: $request->input('languages'),
             minRating: $request->min_rating ? (float) $request->min_rating : null,
             limit: (int) ($request->limit ?? 30),
         );

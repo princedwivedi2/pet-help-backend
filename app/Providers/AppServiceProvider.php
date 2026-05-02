@@ -55,11 +55,11 @@ class AppServiceProvider extends ServiceProvider
             \App\Services\Otp\RandomOtpCodeGenerator::class
         );
 
-        // Online consultation video provider. Default = Null (no real video transport).
-        // Replace binding with TwilioVideoProvider / DailyVideoProvider / etc. when picked.
+        // Online consultation video provider. Using WebRTC with Firebase signaling.
+        // Alternative: TwilioVideoProvider, DailyVideoProvider, etc.
         $this->app->bind(
             \App\Contracts\VideoProviderInterface::class,
-            \App\Services\Video\NullVideoProvider::class
+            \App\Services\Video\WebRtcProvider::class
         );
     }
 
