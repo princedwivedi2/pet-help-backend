@@ -128,7 +128,15 @@ class VetProfileSeeder extends Seeder
             // DatabaseSeeder disables model events; set UUID explicitly for new rows.
             $vet = VetProfile::withTrashed()->firstOrNew(['email' => $vetData['email']]);
 
-            $vet->fill($vetData);
+            // Split protected (admin-gated) fields out so $fillable hardening doesn't silently drop them.
+            $protectedFields = array_intersect_key(
+                $vetData,
+                array_flip(['vet_status', 'verification_status', 'is_active'])
+            );
+            $fillableData = array_diff_key($vetData, $protectedFields);
+
+            $vet->fill($fillableData);
+            $vet->forceFill($protectedFields);
 
             if (empty($vet->uuid)) {
                 $vet->uuid = (string) Str::uuid();

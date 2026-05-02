@@ -31,6 +31,8 @@ class VetUpdateProfileRequest extends ApiFormRequest
             'longitude' => ['required', 'numeric', 'between:-180,180'],
 
             'specialization' => ['nullable', 'string', 'max:150'],
+            'languages' => ['nullable', 'array'],
+            'languages.*' => ['string', 'max:50'],
             'services' => ['required', 'array', 'min:1'],
             'accepted_species' => ['required', 'array', 'min:1'],
             'working_hours' => ['required', 'array'],

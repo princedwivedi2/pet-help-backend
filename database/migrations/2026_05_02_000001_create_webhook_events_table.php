@@ -1,0 +1,30 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration {
+    public function up(): void
+    {
+        Schema::create('webhook_events', function (Blueprint $table) {
+            $table->id();
+            // Provider name (razorpay, stripe, ...) — keeps the table reusable.
+            $table->string('provider', 30)->default('razorpay');
+            // Provider's event id. UNIQUE on (provider, event_id) is the idempotency guard.
+            $table->string('event_id', 100);
+            $table->string('event_type', 60);
+            $table->json('payload')->nullable();
+            $table->timestamp('processed_at')->nullable();
+            $table->timestamps();
+
+            $table->unique(['provider', 'event_id']);
+            $table->index('event_type');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('webhook_events');
+    }
+};

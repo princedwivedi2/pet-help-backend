@@ -6,10 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\Auth\ChangePasswordRequest;
 use App\Http\Requests\Api\V1\Auth\ForgotPasswordRequest;
 use App\Http\Requests\Api\V1\Auth\LoginRequest;
+use App\Http\Requests\Api\V1\Auth\OtpSendRequest;
+use App\Http\Requests\Api\V1\Auth\OtpVerifyRequest;
 use App\Http\Requests\Api\V1\Auth\RegisterRequest;
 use App\Http\Requests\Api\V1\Auth\ResetPasswordRequest;
 use App\Http\Requests\Api\V1\Auth\UpdateProfileRequest;
 use App\Models\User;
+use App\Services\OtpService;
 use App\Traits\ApiResponse;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\JsonResponse;
@@ -22,6 +25,8 @@ use Illuminate\Database\QueryException;
 class AuthController extends Controller
 {
     use ApiResponse;
+
+    public function __construct(private OtpService $otpService) {}
 
     /**
      * Register a new user
@@ -368,5 +373,41 @@ class AuthController extends Controller
         $request->user()->update(['fcm_token' => $request->token]);
 
         return $this->success('Device token registered successfully');
+    }
+
+    public function sendOtp(OtpSendRequest $request): JsonResponse
+    {
+        $challenge = $this->otpService->send(
+            identifier: $request->identifier,
+            channel: $request->input('channel'),
+            purpose: $request->input('purpose')
+        );
+
+        return $this->created('OTP sent successfully', [
+            'challenge_uuid' => $challenge->uuid,
+            'identifier' => $challenge->identifier,
+            'channel' => $challenge->channel,
+            'purpose' => $challenge->purpose,
+            'expires_at' => $challenge->expires_at,
+        ]);
+    }
+
+    public function verifyOtp(OtpVerifyRequest $request): JsonResponse
+    {
+        $challenge = $this->otpService->verify(
+            identifier: $request->identifier,
+            code: $request->code,
+            channel: $request->input('channel'),
+            purpose: $request->input('purpose')
+        );
+
+        return $this->success('OTP verified successfully', [
+            'verified' => true,
+            'challenge_uuid' => $challenge->uuid,
+            'identifier' => $challenge->identifier,
+            'channel' => $challenge->channel,
+            'purpose' => $challenge->purpose,
+            'verified_at' => $challenge->verified_at,
+        ]);
     }
 }

@@ -12,10 +12,41 @@ class DatabaseSeeder extends Seeder
 
     /**
      * Seed the application's database.
+     *
+     * SAFETY: Demo accounts (admin@petsathi.com / vet@petsathi.com / test@example.com)
+     * have hardcoded weak passwords and MUST NEVER run in production. Reference data
+     * (emergency guides, vet directory) still seeds in any environment.
+     *
+     * For production admin bootstrap, use `php artisan admin:create` instead.
      */
     public function run(): void
     {
-        // Create admin user
+        if (app()->environment(['local', 'testing'])) {
+            $this->seedDemoAccounts();
+        } else {
+            $this->command?->warn(
+                'Skipping demo account seeding in environment: ' . app()->environment()
+                . '. Use `php artisan admin:create` to bootstrap production admin.'
+            );
+        }
+
+        // Reference data — safe in any environment.
+        $this->call([
+            EmergencyCategorySeeder::class,
+            EmergencyGuideSeeder::class,
+            VetProfileSeeder::class,
+        ]);
+
+        if (app()->environment(['local', 'testing'])) {
+            $this->linkDemoVetToProfile();
+        }
+    }
+
+    /**
+     * Demo accounts with predictable credentials. Local/testing only.
+     */
+    private function seedDemoAccounts(): void
+    {
         $admin = User::firstOrCreate(
             ['email' => 'admin@petsathi.com'],
             [
@@ -29,7 +60,6 @@ class DatabaseSeeder extends Seeder
             $admin->save();
         }
 
-        // Create test vet user
         $vetUser = User::firstOrCreate(
             ['email' => 'vet@petsathi.com'],
             [
@@ -43,7 +73,6 @@ class DatabaseSeeder extends Seeder
             $vetUser->save();
         }
 
-        // Create test user
         $testUser = User::firstOrCreate(
             ['email' => 'test@example.com'],
             [
@@ -56,23 +85,21 @@ class DatabaseSeeder extends Seeder
             $testUser->role = 'user';
             $testUser->save();
         }
+    }
 
-        // Run seeders
-        $this->call([
-            EmergencyCategorySeeder::class,
-            EmergencyGuideSeeder::class,
-            VetProfileSeeder::class,
-        ]);
-
-        // Assign vet profile to the vet user
-        if ($vetUser) {
-            $vetProfile = \App\Models\VetProfile::where('email', 'info@downtownpetemergency.com')->first();
-            if ($vetProfile) {
-                $vetProfile->update([
-                    'user_id' => $vetUser->id,
-                    'vet_status' => 'approved',
-                ]);
-            }
+    private function linkDemoVetToProfile(): void
+    {
+        $vetUser = User::where('email', 'vet@petsathi.com')->first();
+        if (!$vetUser) {
+            return;
+        }
+        $vetProfile = \App\Models\VetProfile::where('email', 'info@downtownpetemergency.com')->first();
+        if ($vetProfile) {
+            // vet_status is not in $fillable; forceFill bypasses the guard for the seeder.
+            $vetProfile->forceFill([
+                'user_id' => $vetUser->id,
+                'vet_status' => 'approved',
+            ])->save();
         }
     }
 }

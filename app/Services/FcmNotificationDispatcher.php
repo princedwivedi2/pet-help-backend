@@ -4,29 +4,38 @@ namespace App\Services;
 
 use App\Contracts\NotificationDispatcher;
 use App\Models\User;
-use Illuminate\Support\Facades\Http;
+use Kreait\Firebase\Factory as FirebaseFactory;
+use Kreait\Firebase\Messaging\MulticastSendReport;
+use Kreait\Firebase\Messaging\RawMessageFromArray;
+use Kreait\Firebase\Exception\Messaging\NotFound;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
 class FcmNotificationDispatcher implements NotificationDispatcher
 {
-    private const FCM_ENDPOINT = 'https://fcm.googleapis.com/fcm/send';
+    private ?object $messaging = null;
+
+    public function __construct(private FirebaseFactory $firebaseFactory)
+    {
+    }
 
     /**
-     * Send a push notification to a user via FCM.
-     * Gracefully degrades if the user has no FCM token or the server key is not configured.
+     * Lazy-load the messaging service from the Firebase factory.
+     */
+    private function getMessaging(): object
+    {
+        if ($this->messaging === null) {
+            $this->messaging = $this->firebaseFactory->createMessaging();
+        }
+        return $this->messaging;
+    }
+
+    /**
+     * Send a push notification to a user via FCM using HTTP v1 API.
+     * Gracefully degrades if the user has no FCM token or Firebase is not configured.
      */
     public function sendPush(User $user, string $title, string $body, array $data = []): bool
     {
-        $serverKey = config('services.fcm.server_key', '');
-
-        if (empty($serverKey)) {
-            Log::warning('FCM server key not configured — push notification skipped', [
-                'user_id' => $user->id,
-            ]);
-            return false;
-        }
-
         // Reload fcm_token directly (it is in $hidden so may not be on the model)
         $fcmToken = $user->getRawOriginal('fcm_token')
             ?? User::where('id', $user->id)->value('fcm_token');
@@ -38,39 +47,66 @@ class FcmNotificationDispatcher implements NotificationDispatcher
             return false;
         }
 
-        $response = Http::withHeaders([
-            'Authorization' => 'key=' . $serverKey,
-            'Content-Type'  => 'application/json',
-        ])->post(self::FCM_ENDPOINT, [
-            'to'           => $fcmToken,
-            'notification' => [
-                'title' => $title,
-                'body'  => $body,
-                'sound' => 'default',
-            ],
-            'data' => $data,
-        ]);
+        try {
+            $messaging = $this->getMessaging();
 
-        if ($response->status() === 400 || $response->status() === 401) {
-            // Stale or invalid token — clear it
-            Log::warning('FCM token invalid, clearing', [
+            $message = RawMessageFromArray::fromArray([
+                'token' => $fcmToken,
+                'notification' => [
+                    'title' => $title,
+                    'body'  => $body,
+                ],
+                'data' => $data,
+                'android' => [
+                    'notification' => [
+                        'sound' => 'default',
+                    ],
+                ],
+                'apns' => [
+                    'payload' => [
+                        'aps' => [
+                            'sound' => 'default',
+                        ],
+                    ],
+                ],
+                'webpush' => [
+                    'notification' => [
+                        'icon' => 'https://example.com/icon.png',
+                    ],
+                ],
+            ]);
+
+            $report = $messaging->send($message);
+
+            if ($report->isSuccess()) {
+                return true;
+            }
+
+            // Token invalid or expired — clear it
+            if ($report->hasFailures()) {
+                Log::warning('FCM send had failures, clearing token', [
+                    'user_id' => $user->id,
+                    'failures' => $report->failures(),
+                ]);
+                User::where('id', $user->id)->update(['fcm_token' => null]);
+            }
+
+            return false;
+        } catch (NotFound $e) {
+            // Invalid registration token
+            Log::warning('FCM token invalid (NotFound), clearing', [
                 'user_id' => $user->id,
-                'status'  => $response->status(),
+                'error'   => $e->getMessage(),
             ]);
             User::where('id', $user->id)->update(['fcm_token' => null]);
             return false;
-        }
-
-        if ($response->failed()) {
+        } catch (\Throwable $e) {
             Log::error('FCM push failed', [
                 'user_id' => $user->id,
-                'status'  => $response->status(),
-                'body'    => $response->body(),
+                'error'   => $e->getMessage(),
             ]);
             return false;
         }
-
-        return true;
     }
 
     /**

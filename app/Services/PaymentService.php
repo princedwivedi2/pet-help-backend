@@ -85,65 +85,160 @@ class PaymentService
 
     /**
      * Verify and capture Razorpay payment.
+     *
+     * Two-step verification:
+     *   1. HMAC signature check (proves the response came from Razorpay's checkout, not tampered).
+     *   2. Gateway-side fetch via GET /v1/payments/{id} — asserts status === 'captured',
+     *      amount, currency, and order_id ALL match the local Payment row. A valid
+     *      signature alone is not enough: the client could replay a captured payment
+     *      from another order, or a partially-captured payment.
+     *
+     * Mock-mode (no live keys, non-production env) skips the gateway fetch.
      */
     public function verifyPayment(
         string $razorpayOrderId,
         string $razorpayPaymentId,
         string $razorpaySignature
     ): Payment {
-        return DB::transaction(function () use ($razorpayOrderId, $razorpayPaymentId, $razorpaySignature) {
-            $payment = Payment::where('razorpay_order_id', $razorpayOrderId)
-                ->lockForUpdate()
-                ->firstOrFail();
+        $this->assertNotTestKeysInProduction();
 
-            // Verify signature
-            $expectedSignature = hash_hmac(
-                'sha256',
-                $razorpayOrderId . '|' . $razorpayPaymentId,
-                $this->razorpayKeySecret
-            );
+        // Read-only checks happen OUTSIDE the transaction so that on-failure status
+        // updates ('failed') survive — they would otherwise be rolled back when we
+        // throw inside the transaction.
+        $payment = Payment::where('razorpay_order_id', $razorpayOrderId)->firstOrFail();
 
-            if (!hash_equals($expectedSignature, $razorpaySignature)) {
-                $payment->update([
+        // Idempotency: already-paid returns the existing payment (safe retry).
+        if ($payment->isPaid()) {
+            return $payment;
+        }
+
+        // Step 1: HMAC signature.
+        $expectedSignature = hash_hmac(
+            'sha256',
+            $razorpayOrderId . '|' . $razorpayPaymentId,
+            $this->razorpayKeySecret
+        );
+        if (!hash_equals($expectedSignature, $razorpaySignature)) {
+            Payment::where('id', $payment->id)->update([
+                'payment_status' => 'failed',
+                'failure_reason' => 'Signature verification failed',
+            ]);
+            throw new \DomainException('Payment verification failed.');
+        }
+
+        // Step 2: Gateway-side reconciliation. Skip in mock mode.
+        $gatewayResponse = null;
+        if (!$this->isMockMode()) {
+            $mismatches = $this->fetchAndCompareWithGateway($payment, $razorpayPaymentId, $razorpayOrderId, $gatewayResponse);
+            if (!empty($mismatches)) {
+                Payment::where('id', $payment->id)->update([
                     'payment_status' => 'failed',
-                    'failure_reason' => 'Signature verification failed',
+                    'failure_reason' => 'Gateway reconciliation mismatch: ' . implode(',', array_keys($mismatches)),
+                    'razorpay_response' => $gatewayResponse,
+                ]);
+                Log::critical('Razorpay payment verification mismatch — refusing to mark paid', [
+                    'payment_uuid' => $payment->uuid,
+                    'razorpay_payment_id' => $razorpayPaymentId,
+                    'mismatches' => $mismatches,
                 ]);
                 throw new \DomainException('Payment verification failed.');
             }
+        }
 
-            $payment->update([
+        // Step 3: Side-effects atomic — re-read with lock, re-check idempotency, mutate.
+        return DB::transaction(function () use ($payment, $razorpayPaymentId, $razorpaySignature) {
+            $locked = Payment::where('id', $payment->id)->lockForUpdate()->first();
+            if ($locked->isPaid()) {
+                return $locked;
+            }
+
+            $locked->update([
                 'razorpay_payment_id' => $razorpayPaymentId,
                 'razorpay_signature' => $razorpaySignature,
                 'payment_status' => 'paid',
                 'paid_at' => now(),
             ]);
 
-            // Credit vet wallet
-            if ($payment->vet_profile_id && $payment->vet_payout_amount > 0) {
-                $this->creditVetWallet($payment);
+            if ($locked->vet_profile_id && $locked->vet_payout_amount > 0) {
+                $this->creditVetWallet($locked);
             }
-
-            // Update appointment/SOS payment status
-            $this->updatePayableStatus($payment);
+            $this->updatePayableStatus($locked);
 
             $this->auditService->log(
-                $payment->user_id,
+                $locked->user_id,
                 Payment::class,
-                $payment->id,
+                $locked->id,
                 'payment_captured',
                 null,
-                ['razorpay_payment_id' => $razorpayPaymentId, 'amount' => $payment->amount],
+                ['razorpay_payment_id' => $razorpayPaymentId, 'amount' => $locked->amount],
                 'Payment captured successfully'
             );
 
             Log::info('Payment captured', [
-                'payment_uuid' => $payment->uuid,
+                'payment_uuid' => $locked->uuid,
                 'razorpay_payment_id' => $razorpayPaymentId,
-                'amount' => $payment->amount,
+                'amount' => $locked->amount,
             ]);
 
-            return $payment;
+            return $locked;
         });
+    }
+
+    /**
+     * Fetch the payment from Razorpay and compare every load-bearing field against
+     * the local Payment row. Returns a map of `field => [expected, got]` for any
+     * mismatch (empty array = all good). Pure read operation — no DB writes.
+     *
+     * Asserted fields:
+     *   - status === 'captured'   (not 'authorized', 'created', 'failed')
+     *   - amount === local amount (paise, integer)
+     *   - currency === local currency
+     *   - order_id === local razorpay_order_id (catches replays from other orders)
+     *
+     * @throws \RuntimeException on gateway error (5xx, network failure) — caller never sees the row.
+     */
+    private function fetchAndCompareWithGateway(
+        Payment $payment,
+        string $razorpayPaymentId,
+        string $razorpayOrderId,
+        ?array &$gatewayResponse
+    ): array {
+        $response = Http::withBasicAuth($this->razorpayKeyId, $this->razorpayKeySecret)
+            ->timeout(10)
+            ->get("https://api.razorpay.com/v1/payments/{$razorpayPaymentId}");
+
+        if ($response->failed()) {
+            Log::error('Razorpay payment fetch failed during verify', [
+                'payment_uuid' => $payment->uuid,
+                'razorpay_payment_id' => $razorpayPaymentId,
+                'http_status' => $response->status(),
+                'response' => $response->json(),
+            ]);
+            throw new \RuntimeException('Could not verify payment with gateway. Please try again.');
+        }
+
+        $gateway = $response->json();
+        $gatewayResponse = $gateway;
+        $mismatches = [];
+
+        if (($gateway['status'] ?? null) !== 'captured') {
+            $mismatches['status'] = ['expected' => 'captured', 'got' => $gateway['status'] ?? null];
+        }
+        if ((int) ($gateway['amount'] ?? 0) !== (int) $payment->amount) {
+            $mismatches['amount'] = ['expected' => (int) $payment->amount, 'got' => (int) ($gateway['amount'] ?? 0)];
+        }
+
+        $expectedCurrency = strtoupper((string) ($payment->currency ?: 'INR'));
+        $gatewayCurrency = strtoupper((string) ($gateway['currency'] ?? ''));
+        if ($gatewayCurrency !== $expectedCurrency) {
+            $mismatches['currency'] = ['expected' => $expectedCurrency, 'got' => $gatewayCurrency];
+        }
+
+        if (($gateway['order_id'] ?? null) !== $razorpayOrderId) {
+            $mismatches['order_id'] = ['expected' => $razorpayOrderId, 'got' => $gateway['order_id'] ?? null];
+        }
+
+        return $mismatches;
     }
 
     /**
@@ -353,10 +448,35 @@ class PaymentService
 
     /**
      * Check if payment gateway is properly configured.
+     *
+     * In production, also rejects test-mode keys (rzp_test_*) so a misconfigured
+     * deploy can never accept real money against a test account.
      */
     public function isConfigured(): bool
     {
-        return !empty($this->razorpayKeyId) && !empty($this->razorpayKeySecret);
+        if (empty($this->razorpayKeyId) || empty($this->razorpayKeySecret)) {
+            return false;
+        }
+
+        if (config('app.env') === 'production' && str_starts_with($this->razorpayKeyId, 'rzp_test')) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Production safety: throw if test-mode keys are configured in production.
+     * Called at the entry of every gateway-touching method.
+     */
+    private function assertNotTestKeysInProduction(): void
+    {
+        if (config('app.env') === 'production' && str_starts_with($this->razorpayKeyId, 'rzp_test')) {
+            Log::critical('Razorpay test keys detected in production — refusing to process payment', [
+                'key_prefix' => substr($this->razorpayKeyId, 0, 8),
+            ]);
+            throw new \RuntimeException('Payment gateway misconfigured. Please contact support.');
+        }
     }
 
     /**
@@ -364,11 +484,15 @@ class PaymentService
      */
     public function isMockMode(): bool
     {
-        return !$this->isConfigured() || str_starts_with($this->razorpayKeyId, 'rzp_test');
+        return empty($this->razorpayKeyId)
+            || empty($this->razorpayKeySecret)
+            || (config('app.env') !== 'production' && str_starts_with($this->razorpayKeyId, 'rzp_test'));
     }
 
     private function createRazorpayOrder(int $amount, string $currency): array
     {
+        $this->assertNotTestKeysInProduction();
+
         if (!$this->isConfigured()) {
             // SECURITY: Block mock orders in production environment
             if (config('app.env') === 'production') {
@@ -542,32 +666,48 @@ class PaymentService
         string $razorpaySignature,
         int $userId
     ): Subscription {
-        return DB::transaction(function () use ($razorpayOrderId, $razorpayPaymentId, $razorpaySignature, $userId) {
-            $payment = Payment::where('razorpay_order_id', $razorpayOrderId)
-                ->where('user_id', $userId)
-                ->where('payable_type', 'subscription')
-                ->lockForUpdate()
-                ->firstOrFail();
+        $this->assertNotTestKeysInProduction();
 
-            if ($payment->isPaid()) {
-                // Idempotent: return existing subscription
-                $subscription = Subscription::where('payment_id', $payment->id)->firstOrFail();
-                return $subscription;
-            }
+        // Read-only checks first so failure status updates survive (see verifyPayment).
+        $payment = Payment::where('razorpay_order_id', $razorpayOrderId)
+            ->where('user_id', $userId)
+            ->where('payable_type', 'subscription')
+            ->firstOrFail();
 
-            // Verify Razorpay signature
-            $expectedSignature = hash_hmac(
-                'sha256',
-                $razorpayOrderId . '|' . $razorpayPaymentId,
-                $this->razorpayKeySecret
-            );
+        if ($payment->isPaid()) {
+            return Subscription::where('payment_id', $payment->id)->firstOrFail();
+        }
 
-            if (!hash_equals($expectedSignature, $razorpaySignature)) {
-                $payment->update([
+        $expectedSignature = hash_hmac(
+            'sha256',
+            $razorpayOrderId . '|' . $razorpayPaymentId,
+            $this->razorpayKeySecret
+        );
+        if (!hash_equals($expectedSignature, $razorpaySignature)) {
+            Payment::where('id', $payment->id)->update([
+                'payment_status' => 'failed',
+                'failure_reason' => 'Signature verification failed',
+            ]);
+            throw new \DomainException('Payment verification failed.');
+        }
+
+        if (!$this->isMockMode()) {
+            $gatewayResponse = null;
+            $mismatches = $this->fetchAndCompareWithGateway($payment, $razorpayPaymentId, $razorpayOrderId, $gatewayResponse);
+            if (!empty($mismatches)) {
+                Payment::where('id', $payment->id)->update([
                     'payment_status' => 'failed',
-                    'failure_reason' => 'Signature verification failed',
+                    'failure_reason' => 'Gateway reconciliation mismatch: ' . implode(',', array_keys($mismatches)),
+                    'razorpay_response' => $gatewayResponse,
                 ]);
                 throw new \DomainException('Payment verification failed.');
+            }
+        }
+
+        return DB::transaction(function () use ($payment, $razorpayPaymentId, $razorpaySignature, $userId) {
+            $payment = Payment::where('id', $payment->id)->lockForUpdate()->first();
+            if ($payment->isPaid()) {
+                return Subscription::where('payment_id', $payment->id)->firstOrFail();
             }
 
             $payment->update([

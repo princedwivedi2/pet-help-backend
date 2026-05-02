@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\V1\AppointmentController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BlogController;
 use App\Http\Controllers\Api\V1\CommunityController;
+use App\Http\Controllers\Api\V1\ConsultationController;
 use App\Http\Controllers\Api\V1\GuideController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\IncidentController;
@@ -30,6 +31,8 @@ Route::prefix('auth')->group(function () {
     Route::middleware('throttle:5,1')->group(function () {
         Route::post('register', [AuthController::class, 'register']);
         Route::post('login', [AuthController::class, 'login']);
+        Route::post('otp/send', [AuthController::class, 'sendOtp'])->middleware('throttle:3,1');
+        Route::post('otp/verify', [AuthController::class, 'verifyOtp'])->middleware('throttle:10,1');
         Route::post('forgot-password', [AuthController::class, 'forgotPassword']);
         Route::post('reset-password', [AuthController::class, 'resetPassword']);
     });
@@ -286,6 +289,22 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
     Route::middleware('throttle:20,1')->prefix('subscriptions')->group(function () {
         Route::post('/', [SubscriptionController::class, 'purchase']);
         Route::get('/active', [SubscriptionController::class, 'active']);
+    });
+
+    // ─── Online Consultations (instant + scheduled) ──────────────────
+    // Shared between user (initiates) and vet (accepts/serves). Role-specific
+    // actions check inside the controller so a single route surface works for both.
+    Route::middleware('throttle:30,1')->prefix('consultations')->group(function () {
+        Route::get('/', [ConsultationController::class, 'index']);
+        Route::post('/', [ConsultationController::class, 'start']);                      // user
+        Route::get('/{uuid}', [ConsultationController::class, 'show']);
+        Route::post('/{uuid}/accept', [ConsultationController::class, 'accept']);        // vet
+        Route::post('/{uuid}/join', [ConsultationController::class, 'join']);
+        Route::post('/{uuid}/connection-failure', [ConsultationController::class, 'connectionFailure']);
+        Route::post('/{uuid}/complete', [ConsultationController::class, 'complete']);    // vet
+        Route::post('/{uuid}/cancel', [ConsultationController::class, 'vetCancel']);     // vet
+        Route::get('/{uuid}/messages', [ConsultationController::class, 'messages']);
+        Route::post('/{uuid}/messages', [ConsultationController::class, 'postMessage']);
     });
 });
 

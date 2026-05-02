@@ -272,6 +272,7 @@ class VetOnboardingController extends Controller
             'qualifications' => $payload['qualification'],
             'license_number' => $payload['license_number'],
             'specialization' => $payload['specialization'] ?? $vetProfile->specialization,
+            'languages' => $payload['languages'] ?? $vetProfile->languages,
             'services' => $payload['services'],
             'accepted_species' => $payload['accepted_species'],
             'consultation_types' => $payload['consultation_types'] ?? $vetProfile->consultation_types,

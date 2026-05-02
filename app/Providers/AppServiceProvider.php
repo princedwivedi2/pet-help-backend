@@ -25,6 +25,7 @@ use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
+use Kreait\Firebase\Factory as FirebaseFactory;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -38,9 +39,27 @@ class AppServiceProvider extends ServiceProvider
             \App\Services\AdminMetricsService::class
         );
 
+        $this->app->singleton(FirebaseFactory::class, function () {
+            return (new FirebaseFactory())->withServiceAccount(
+                config('firebase.projects.app.credentials') ?? config('firebase.projects.app')
+            );
+        });
+
         $this->app->bind(
             \App\Contracts\NotificationDispatcher::class,
             \App\Services\FcmNotificationDispatcher::class
+        );
+
+        $this->app->bind(
+            \App\Contracts\OtpCodeGenerator::class,
+            \App\Services\Otp\RandomOtpCodeGenerator::class
+        );
+
+        // Online consultation video provider. Default = Null (no real video transport).
+        // Replace binding with TwilioVideoProvider / DailyVideoProvider / etc. when picked.
+        $this->app->bind(
+            \App\Contracts\VideoProviderInterface::class,
+            \App\Services\Video\NullVideoProvider::class
         );
     }
 

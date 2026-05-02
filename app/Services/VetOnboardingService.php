@@ -59,8 +59,10 @@ class VetOnboardingService
                 $user->role = 'vet';
                 $user->save();
 
-                // Create vet profile
-                $vetProfile = VetProfile::create([
+                // Create vet profile.
+                // vet_status / verification_status / is_active are not in $fillable (security:
+                // prevents self-approval via mass assignment) — set explicitly via forceFill.
+                $vetProfile = new VetProfile([
                     'user_id'                => $user->id,
                     'vet_name'               => $data['full_name'],
                     'clinic_name'            => $data['clinic_name'],
@@ -75,6 +77,7 @@ class VetOnboardingService
                     'longitude'              => $data['longitude'],
                     'qualifications'         => $data['qualifications'] ?? $data['qualification'] ?? null,
                     'specialization'         => $data['specialization'] ?? null,
+                    'languages'              => $data['languages'] ?? null,
                     'license_number'         => $data['license_number'],
                     'years_of_experience'    => $data['years_of_experience'],
                     'consultation_fee'       => $data['consultation_fee'] ?? null,
@@ -88,10 +91,12 @@ class VetOnboardingService
                     'verification_documents' => $data['verification_documents'] ?? $documentPaths,
                     'is_emergency_available' => $data['is_emergency_available'] ?? false,
                     'is_24_hours'            => $data['is_24_hours'] ?? false,
-                    'vet_status'             => 'pending',
-                    'verification_status'    => 'pending',
-                    'is_active'              => true,
                 ]);
+                $vetProfile->forceFill([
+                    'vet_status'          => 'pending',
+                    'verification_status' => 'pending',
+                    'is_active'           => true,
+                ])->save();
 
                 // Create an initial pending verification record
                 VetVerification::create([
@@ -356,11 +361,12 @@ class VetOnboardingService
                 throw new VetDocumentException($missingDocs, 'Required documents missing or corrupted');
             }
 
-            // All clear — approve and verify email
-            $vetProfile->update([
+            // All clear — approve and verify email.
+            // forceFill bypasses $fillable guard on protected status fields (admin-gated path).
+            $vetProfile->forceFill([
                 'vet_status' => 'approved',
                 'verification_status' => 'approved',
-            ]);
+            ])->save();
 
             // Verify the user's email if not already verified
             $vetProfile->user?->update([
@@ -396,10 +402,10 @@ class VetOnboardingService
                 throw new \DomainException("Only pending vets can be rejected. Current status: {$vetProfile->vet_status}");
             }
 
-            $vetProfile->update([
+            $vetProfile->forceFill([
                 'vet_status' => 'rejected',
                 'verification_status' => 'rejected',
-            ]);
+            ])->save();
 
             // Revoke all tokens — blocked vets must not retain API access
             if ($vetProfile->user) {
@@ -433,11 +439,11 @@ class VetOnboardingService
                 throw new \DomainException("Only approved vets can be suspended. Current status: {$vetProfile->vet_status}");
             }
 
-            $vetProfile->update([
+            $vetProfile->forceFill([
                 'vet_status' => 'suspended',
                 'verification_status' => 'suspended',
                 'is_active'  => false,
-            ]);
+            ])->save();
 
             // Revoke all tokens — suspended vets must not retain API access
             if ($vetProfile->user) {
@@ -471,11 +477,11 @@ class VetOnboardingService
                 throw new \DomainException("Only suspended vets can be reactivated. Current status: {$vetProfile->vet_status}");
             }
 
-            $vetProfile->update([
+            $vetProfile->forceFill([
                 'vet_status' => 'approved',
                 'verification_status' => 'approved',
                 'is_active'  => true,
-            ]);
+            ])->save();
 
             // Persistent verification record with snapshot
             $this->verificationService->createVerificationRecord(
@@ -514,11 +520,11 @@ class VetOnboardingService
                 throw new \DomainException('Suspended vets cannot be moved to request-info state.');
             }
 
-            $vetProfile->update([
+            $vetProfile->forceFill([
                 'vet_status' => 'pending',
                 'verification_status' => 'needs_information',
                 'is_active' => false,
-            ]);
+            ])->save();
 
             $this->verificationService->createVerificationRecord(
                 $vetProfile,

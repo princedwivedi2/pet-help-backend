@@ -91,6 +91,7 @@ class VetController extends Controller
             'is_verified' => $vet->vet_status === 'approved',
             'availability_status' => $vet->availability_status ?? 'offline',
             'profile_photo' => $vet->profile_photo,
+            'languages' => $vet->languages ?? [],
             'consultation_fee' => $vet->consultation_fee,
             'home_visit_fee' => $vet->home_visit_fee,
             'specialization' => $vet->specialization,

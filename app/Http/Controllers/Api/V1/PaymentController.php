@@ -7,10 +7,13 @@ use App\Models\Appointment;
 use App\Models\Payment;
 use App\Models\SosRequest;
 use App\Models\VetProfile;
+use App\Models\WebhookEvent;
 use App\Services\PaymentService;
 use App\Traits\ApiResponse;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class PaymentController extends Controller
 {
@@ -331,6 +334,10 @@ class PaymentController extends Controller
     /**
      * Handle Razorpay webhook events.
      * POST /api/payments/webhook  (no auth — verified by HMAC signature)
+     *
+     * Idempotency: Razorpay retries on network failures, so the same `event.id` can
+     * arrive multiple times. We dedupe via UNIQUE(provider, event_id) on the
+     * webhook_events table and short-circuit with 200 on duplicate.
      */
     public function webhook(Request $request): JsonResponse
     {
@@ -353,6 +360,42 @@ class PaymentController extends Controller
 
         $payload = json_decode($rawBody, true);
         $event   = $payload['event'] ?? null;
+        $eventId = $payload['id'] ?? null;
+
+        if (empty($eventId)) {
+            // Razorpay always sends `id`; if missing, treat as malformed.
+            \Illuminate\Support\Facades\Log::warning('Razorpay webhook missing event id', ['event' => $event]);
+            return response()->json(['status' => 'ok']); // 200 so Razorpay stops retrying
+        }
+
+        // Idempotency guard. Try to insert the event row; if it already exists,
+        // this is a replay — return 200 without re-running side effects.
+        try {
+            DB::transaction(function () use ($payload, $event, $eventId) {
+                WebhookEvent::create([
+                    'provider'   => 'razorpay',
+                    'event_id'   => $eventId,
+                    'event_type' => $event ?? 'unknown',
+                    'payload'    => $payload,
+                ]);
+            });
+        } catch (QueryException $e) {
+            // 23000 = integrity constraint violation (UNIQUE on provider+event_id).
+            // SQLite reports as "UNIQUE constraint failed". Both = duplicate replay.
+            $sqlState = (string) ($e->errorInfo[0] ?? '');
+            $isDuplicate = $sqlState === '23000'
+                || str_contains($e->getMessage(), 'UNIQUE constraint failed')
+                || str_contains($e->getMessage(), 'Duplicate entry');
+
+            if ($isDuplicate) {
+                \Illuminate\Support\Facades\Log::info('Razorpay webhook replay ignored', [
+                    'event_id' => $eventId,
+                    'event_type' => $event,
+                ]);
+                return response()->json(['status' => 'ok']);
+            }
+            throw $e;
+        }
 
         if ($event === 'payment.captured') {
             $razorpayOrderId  = $payload['payload']['payment']['entity']['order_id'] ?? null;
@@ -378,6 +421,11 @@ class PaymentController extends Controller
                 }
             }
         }
+
+        // Mark the event as fully processed for observability.
+        WebhookEvent::where('provider', 'razorpay')
+            ->where('event_id', $eventId)
+            ->update(['processed_at' => now()]);
 
         return response()->json(['status' => 'ok']);
     }

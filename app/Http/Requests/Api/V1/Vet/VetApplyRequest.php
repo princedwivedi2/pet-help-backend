@@ -69,6 +69,8 @@ class VetApplyRequest extends ApiFormRequest
             'license_number'       => ['required', 'string', 'max:100', 'unique:vet_profiles,license_number'],
             'years_of_experience'  => ['required', 'integer', 'min:0', 'max:60'],
             'specialization'       => ['required', 'string', 'max:150'],
+            'languages'            => ['nullable', 'array'],
+            'languages.*'          => ['string', 'max:50'],
             'consultation_fee'     => ['required', 'integer', 'min:0'],
             'home_visit_fee'       => ['nullable', 'integer', 'min:0'],
             'accepted_species'     => ['required', 'array', 'min:1'],
