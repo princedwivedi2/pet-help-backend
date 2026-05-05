@@ -45,6 +45,15 @@ return [
         'server_key' => env('FCM_SERVER_KEY', ''),
     ],
 
+    'firebase' => [
+        // Chat realtime fan-out backend.
+        //   'realtime'  - Firebase Realtime Database (default; works without ext-grpc)
+        //   'firestore' - Cloud Firestore (richer query/security; REQUIRES ext-grpc on the host)
+        // Source of truth stays in MySQL regardless — this only controls the
+        // realtime push side-effect.
+        'chat_backend' => env('FIREBASE_CHAT_BACKEND', 'realtime'),
+    ],
+
     'openai' => [
         'key'   => env('OPENAI_API_KEY', ''),
         'model' => env('OPENAI_MODEL', 'gpt-4o-mini'),

@@ -3,116 +3,186 @@
 namespace App\Services;
 
 use App\Contracts\NotificationDispatcher;
+use App\Models\DeviceToken;
 use App\Models\User;
-use Kreait\Firebase\Factory as FirebaseFactory;
-use Kreait\Firebase\Messaging\MulticastSendReport;
-use Kreait\Firebase\Messaging\RawMessageFromArray;
-use Kreait\Firebase\Exception\Messaging\NotFound;
+use Closure;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Kreait\Firebase\Contract\Messaging;
+use Kreait\Firebase\Exception\Messaging\NotFound;
+use Kreait\Firebase\Messaging\CloudMessage;
+use Kreait\Firebase\Messaging\Notification;
 
+/**
+ * FCM dispatcher using Firebase HTTP v1 API via the kreait Admin SDK.
+ *
+ * Multi-device fan-out:
+ *   sendPush() reads ALL active rows from `device_tokens` for the user and sends
+ *   one CloudMessage per token. Per-token failures (NotFound = invalid/expired)
+ *   deactivate ONLY that row — other devices keep working. Returns true if any
+ *   send succeeded.
+ *
+ * Falls back to the legacy `users.fcm_token` column when no device_tokens rows
+ * exist yet (during the transition period after the multi-device migration).
+ *
+ * Constructor takes a Closure that lazily returns a Messaging instance (or null
+ * when Firebase is unavailable).
+ */
 class FcmNotificationDispatcher implements NotificationDispatcher
 {
-    private ?object $messaging = null;
+    /** @var Closure(): ?Messaging */
+    private Closure $messagingResolver;
 
-    public function __construct(private FirebaseFactory $firebaseFactory)
-    {
-    }
+    private ?Messaging $messaging = null;
+    private bool $messagingResolved = false;
 
     /**
-     * Lazy-load the messaging service from the Firebase factory.
+     * @param  Closure(): ?Messaging  $messagingResolver
      */
-    private function getMessaging(): object
+    public function __construct(Closure $messagingResolver)
     {
-        if ($this->messaging === null) {
-            $this->messaging = $this->firebaseFactory->createMessaging();
+        $this->messagingResolver = $messagingResolver;
+    }
+
+    private function messaging(): ?Messaging
+    {
+        if (!$this->messagingResolved) {
+            try {
+                $this->messaging = ($this->messagingResolver)();
+            } catch (\Throwable $e) {
+                Log::warning('FCM messaging resolver failed', ['error' => $e->getMessage()]);
+                $this->messaging = null;
+            }
+            $this->messagingResolved = true;
         }
         return $this->messaging;
     }
 
     /**
-     * Send a push notification to a user via FCM using HTTP v1 API.
-     * Gracefully degrades if the user has no FCM token or Firebase is not configured.
+     * Send a push notification to every active device the user has registered.
+     * Per-device failure deactivates that token; other devices are unaffected.
+     *
+     * @return bool true if at least one device successfully received the push.
      */
     public function sendPush(User $user, string $title, string $body, array $data = []): bool
     {
-        // Reload fcm_token directly (it is in $hidden so may not be on the model)
-        $fcmToken = $user->getRawOriginal('fcm_token')
-            ?? User::where('id', $user->id)->value('fcm_token');
-
-        if (empty($fcmToken)) {
-            Log::debug('No FCM token for user — push notification skipped', [
+        $tokens = $this->resolveActiveTokens($user);
+        if ($tokens->isEmpty()) {
+            Log::debug('No active device tokens for user — push skipped', [
                 'user_id' => $user->id,
             ]);
             return false;
         }
 
-        try {
-            $messaging = $this->getMessaging();
-
-            $message = RawMessageFromArray::fromArray([
-                'token' => $fcmToken,
-                'notification' => [
-                    'title' => $title,
-                    'body'  => $body,
-                ],
-                'data' => $data,
-                'android' => [
-                    'notification' => [
-                        'sound' => 'default',
-                    ],
-                ],
-                'apns' => [
-                    'payload' => [
-                        'aps' => [
-                            'sound' => 'default',
-                        ],
-                    ],
-                ],
-                'webpush' => [
-                    'notification' => [
-                        'icon' => 'https://example.com/icon.png',
-                    ],
-                ],
+        $messaging = $this->messaging();
+        if ($messaging === null) {
+            Log::warning('FCM unavailable — push skipped', [
+                'user_id' => $user->id,
+                'token_count' => $tokens->count(),
             ]);
+            return false;
+        }
 
-            $report = $messaging->send($message);
+        $notification = Notification::create($title, $body);
+        $stringData = $this->coerceDataToStrings($data);
+        $anySuccess = false;
 
-            if ($report->isSuccess()) {
-                return true;
-            }
+        foreach ($tokens as $row) {
+            $token = $row['token'];
+            try {
+                $message = CloudMessage::new()
+                    ->withToken($token)
+                    ->withNotification($notification)
+                    ->withData($stringData);
+                $messaging->send($message);
+                $anySuccess = true;
 
-            // Token invalid or expired — clear it
-            if ($report->hasFailures()) {
-                Log::warning('FCM send had failures, clearing token', [
+                if ($row['device_token_id'] !== null) {
+                    DeviceToken::where('id', $row['device_token_id'])
+                        ->update(['last_seen_at' => now()]);
+                }
+            } catch (NotFound $e) {
+                $this->deactivateToken($user, $row, 'fcm_not_found');
+            } catch (\Throwable $e) {
+                Log::warning('FCM send failed for one token (other devices unaffected)', [
                     'user_id' => $user->id,
-                    'failures' => $report->failures(),
+                    'device_token_id' => $row['device_token_id'],
+                    'error' => $e->getMessage(),
                 ]);
-                User::where('id', $user->id)->update(['fcm_token' => null]);
             }
+        }
 
-            return false;
-        } catch (NotFound $e) {
-            // Invalid registration token
-            Log::warning('FCM token invalid (NotFound), clearing', [
-                'user_id' => $user->id,
-                'error'   => $e->getMessage(),
+        return $anySuccess;
+    }
+
+    /**
+     * Returns rows of `[token, device_token_id|null]`. Falls back to the legacy
+     * `users.fcm_token` column when no device_tokens rows exist yet — this lets
+     * notifications keep working during the transition without forcing every
+     * client to re-register first.
+     *
+     * @return \Illuminate\Support\Collection<int, array{token:string, device_token_id:?int}>
+     */
+    private function resolveActiveTokens(User $user): \Illuminate\Support\Collection
+    {
+        $rows = DeviceToken::query()
+            ->where('user_id', $user->id)
+            ->where('is_active', true)
+            ->orderByDesc('last_seen_at')
+            ->get(['id', 'token'])
+            ->map(fn (DeviceToken $dt) => [
+                'token' => $dt->token,
+                'device_token_id' => $dt->id,
             ]);
-            User::where('id', $user->id)->update(['fcm_token' => null]);
-            return false;
-        } catch (\Throwable $e) {
-            Log::error('FCM push failed', [
-                'user_id' => $user->id,
-                'error'   => $e->getMessage(),
+
+        if ($rows->isNotEmpty()) {
+            return $rows;
+        }
+
+        // Legacy fallback: pre-migration users still have a single fcm_token.
+        $legacy = $user->getRawOriginal('fcm_token')
+            ?? User::where('id', $user->id)->value('fcm_token');
+
+        if (!empty($legacy)) {
+            return collect([
+                ['token' => $legacy, 'device_token_id' => null],
             ]);
-            return false;
+        }
+
+        return collect();
+    }
+
+    private function deactivateToken(User $user, array $row, string $reason): void
+    {
+        Log::warning('FCM token invalid — deactivating', [
+            'user_id' => $user->id,
+            'device_token_id' => $row['device_token_id'],
+            'reason' => $reason,
+        ]);
+
+        if ($row['device_token_id'] !== null) {
+            DeviceToken::where('id', $row['device_token_id'])
+                ->update(['is_active' => false]);
+        } else {
+            // Legacy single-column path — clear users.fcm_token if that's what failed.
+            User::where('id', $user->id)
+                ->where('fcm_token', $row['token'])
+                ->update(['fcm_token' => null]);
         }
     }
 
     /**
-     * Send an email notification.
-     * Delegates to Laravel's mail system via the configured mailer.
+     * FCM CloudMessage data values must be strings — coerce here.
      */
+    private function coerceDataToStrings(array $data): array
+    {
+        $out = [];
+        foreach ($data as $k => $v) {
+            $out[(string) $k] = is_scalar($v) ? (string) $v : json_encode($v);
+        }
+        return $out;
+    }
+
     public function sendEmail(User $user, string $subject, string $template, array $data = []): bool
     {
         try {
@@ -130,9 +200,6 @@ class FcmNotificationDispatcher implements NotificationDispatcher
         }
     }
 
-    /**
-     * Send an SMS notification (stub — wire to Twilio/SNS when credentials are available).
-     */
     public function sendSms(string $phoneNumber, string $message): bool
     {
         Log::info('SMS notification stub called', [

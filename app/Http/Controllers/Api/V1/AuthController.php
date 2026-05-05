@@ -361,16 +361,40 @@ class AuthController extends Controller
     // ─── Device Token (FCM) ─────────────────────────────────────────
 
     /**
-     * Register or update the authenticated user's FCM device token.
+     * Register or update an FCM device token for the authenticated user.
+     *
+     * Upsert semantics: if the token row already exists (same device reinstall
+     * or other user's old token), we update last_seen_at, reactivate, and
+     * re-assign user_id to the current caller. FCM tokens are device-scoped —
+     * they MUST NOT be retained across users on the same handset.
+     *
+     * Also keeps `users.fcm_token` in sync for legacy callers during the
+     * transition period; will be dropped once consumers are migrated.
+     *
      * POST /api/v1/auth/device-token
      */
     public function registerDeviceToken(Request $request): JsonResponse
     {
-        $request->validate([
+        $data = $request->validate([
             'token' => ['required', 'string', 'max:500'],
+            'platform' => ['nullable', 'string', 'in:ios,android,web,unknown'],
         ]);
 
-        $request->user()->update(['fcm_token' => $request->token]);
+        $user = $request->user();
+        $platform = $data['platform'] ?? 'unknown';
+
+        \App\Models\DeviceToken::updateOrCreate(
+            ['token' => $data['token']],
+            [
+                'user_id' => $user->id,
+                'platform' => $platform,
+                'last_seen_at' => now(),
+                'is_active' => true,
+            ]
+        );
+
+        // Keep legacy single column in sync for any code still reading it.
+        $user->update(['fcm_token' => $data['token']]);
 
         return $this->success('Device token registered successfully');
     }

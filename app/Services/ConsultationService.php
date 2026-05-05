@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Contracts\ChatMessageBroadcaster;
 use App\Contracts\VideoProviderInterface;
 use App\Models\ConsultationMessage;
 use App\Models\ConsultationSession;
@@ -38,6 +39,7 @@ class ConsultationService
     public function __construct(
         private VideoProviderInterface $videoProvider,
         private AuditService $auditService,
+        private ChatMessageBroadcaster $chatBroadcaster,
     ) {}
 
     /**
@@ -273,13 +275,19 @@ class ConsultationService
     ): ConsultationMessage {
         $role = $session->user_id === $sender->id ? 'user' : 'vet';
 
-        return ConsultationMessage::create([
+        $message = ConsultationMessage::create([
             'consultation_session_id' => $session->id,
             'sender_id' => $sender->id,
             'sender_role' => $role,
             'type' => 'text',
             'body' => $body,
         ]);
+
+        // Realtime fan-out to Firebase. Failure is logged but never blocks the
+        // synchronous DB write — chat history is sourced from MySQL, not Firebase.
+        $this->chatBroadcaster->broadcastMessage($message);
+
+        return $message;
     }
 
     private function failInternal(ConsultationSession $session, string $reason): void

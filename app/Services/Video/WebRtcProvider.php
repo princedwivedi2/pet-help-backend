@@ -2,61 +2,78 @@
 
 namespace App\Services\Video;
 
+use App\Contracts\SignalingChannel;
 use App\Contracts\VideoProviderInterface;
 use App\Models\ConsultationSession;
-use Kreait\Firebase\Factory as FirebaseFactory;
-use Illuminate\Support\Str;
+use Closure;
 use Illuminate\Support\Facades\Log;
-use Carbon\Carbon;
+use Illuminate\Support\Str;
 
 /**
- * WebRTC provider using browser P2P with Firebase Realtime Database for signaling.
+ * WebRTC provider using browser P2P with a pluggable signaling channel.
  *
- * For each consultation session:
- * - A room is created with a unique room_id
- * - Participants exchange SDP offers/answers and ICE candidates via Firebase
- * - Join tokens are signed with a secret and include participant metadata
- * - Rooms auto-expire after consultation ends or a TTL passes
+ * Production wires this with FirebaseSignalingChannel (Realtime Database).
+ * Tests can swap in any SignalingChannel mock.
  *
- * Client must handle:
+ * Client-side responsibilities:
  * - Browser WebRTC (navigator.mediaDevices.getUserMedia, RTCPeerConnection)
- * - Firebase Realtime Database listener for signaling (ICE candidates, SDP)
- * - Audio/video stream setup and tear-down
+ * - Subscribe to the signaling path returned in metadata for SDP/ICE exchange
+ * - Tear down RTCPeerConnections when the room is destroyed
+ *
+ * The constructor takes a Closure that lazily returns a SignalingChannel (or null
+ * when signaling transport is unavailable). This indirection keeps construction
+ * cheap, lets the binding fail open, and makes testing trivial.
  */
 class WebRtcProvider implements VideoProviderInterface
 {
-    private ?object $database = null;
+    /** @var Closure(): ?SignalingChannel */
+    private Closure $channelResolver;
 
-    public function __construct(private FirebaseFactory $firebaseFactory)
-    {
-    }
+    private ?SignalingChannel $channel = null;
+    private bool $channelResolved = false;
 
     /**
-     * Get Firebase Realtime Database reference for signaling.
+     * @param  Closure(): ?SignalingChannel  $channelResolver
      */
-    private function getDatabase(): object
+    public function __construct(Closure $channelResolver)
     {
-        if ($this->database === null) {
-            $this->database = $this->firebaseFactory->createDatabase();
+        $this->channelResolver = $channelResolver;
+    }
+
+    private function channel(): ?SignalingChannel
+    {
+        if (!$this->channelResolved) {
+            try {
+                $this->channel = ($this->channelResolver)();
+            } catch (\Throwable $e) {
+                Log::warning('WebRTC signaling resolver failed', ['error' => $e->getMessage()]);
+                $this->channel = null;
+            }
+            $this->channelResolved = true;
         }
-        return $this->database;
+        return $this->channel;
     }
 
-    /**
-     * Create a room for the consultation session.
-     * Initializes Firebase signaling structure and returns room metadata.
-     */
     public function createRoom(ConsultationSession $session): array
     {
         $roomId = 'room-' . $session->uuid;
         $signalingPath = "/signaling/{$roomId}";
 
-        try {
-            $database = $this->getDatabase();
-            $roomRef = $database->getReference($signalingPath);
+        $channel = $this->channel();
+        if ($channel === null) {
+            return [
+                'room_id' => $roomId,
+                'provider' => $this->name(),
+                'metadata' => [
+                    'signaling_path' => $signalingPath,
+                    'fallback' => true,
+                    'warning' => 'Signaling transport unavailable — P2P only, no ICE candidate exchange',
+                ],
+            ];
+        }
 
-            // Initialize room structure with metadata
-            $roomRef->set([
+        try {
+            $channel->initializeRoom($signalingPath, [
                 'created_at' => now()->toIso8601String(),
                 'session_id' => $session->id,
                 'participants' => [],
@@ -77,7 +94,7 @@ class WebRtcProvider implements VideoProviderInterface
                 'metadata' => [
                     'signaling_path' => $signalingPath,
                     'created_at' => now()->toIso8601String(),
-                    'ttl_seconds' => 3600, // 1 hour session lifetime
+                    'ttl_seconds' => 3600,
                 ],
             ];
         } catch (\Throwable $e) {
@@ -85,15 +102,13 @@ class WebRtcProvider implements VideoProviderInterface
                 'session_id' => $session->id,
                 'error' => $e->getMessage(),
             ]);
-
-            // Graceful fallback: return room info without Firebase (P2P only)
             return [
                 'room_id' => $roomId,
                 'provider' => $this->name(),
                 'metadata' => [
                     'signaling_path' => $signalingPath,
                     'fallback' => true,
-                    'warning' => 'Firebase unavailable — P2P only, no ICE candidate exchange',
+                    'warning' => 'Signaling transport error — P2P only, no ICE candidate exchange',
                 ],
             ];
         }
@@ -101,8 +116,8 @@ class WebRtcProvider implements VideoProviderInterface
 
     /**
      * Generate a signed join token for a participant.
-     * Token includes room_id, user_id, role, and expiration.
-     * Client uses token to authenticate with Firebase signaling.
+     * Token format: `header.payload.signature` (JWT-like, HMAC-SHA256, app key).
+     * Client uses token to authenticate with the signaling channel.
      */
     public function generateJoinToken(ConsultationSession $session, string $role, int $userId): string
     {
@@ -110,67 +125,38 @@ class WebRtcProvider implements VideoProviderInterface
             'room_id' => 'room-' . $session->uuid,
             'session_id' => $session->id,
             'user_id' => $userId,
-            'role' => $role, // 'user' or 'vet'
+            'role' => $role,
             'iat' => now()->unix(),
-            'exp' => now()->addHour()->unix(), // Token valid for 1 hour
+            'exp' => now()->addHour()->unix(),
             'nonce' => Str::random(32),
         ];
 
-        // Simple JWT-like token (Base64 encoded JSON + HMAC signature)
         $header = base64_encode(json_encode(['alg' => 'HS256', 'typ' => 'JWT']));
         $body = base64_encode(json_encode($payload));
-        $signature = hash_hmac(
-            'sha256',
-            "{$header}.{$body}",
-            config('app.key'),
-            true
-        );
-        $signatureB64 = base64_encode($signature);
+        $signature = hash_hmac('sha256', "{$header}.{$body}", config('app.key'), true);
 
-        $token = "{$header}.{$body}.{$signatureB64}";
-
-        Log::debug('WebRTC join token generated', [
-            'room_id' => $payload['room_id'],
-            'user_id' => $userId,
-            'role' => $role,
-        ]);
-
-        return $token;
+        return "{$header}.{$body}." . base64_encode($signature);
     }
 
-    /**
-     * Tear down the room by clearing Firebase signaling data.
-     * Client should also close local RTCPeerConnections.
-     */
     public function destroyRoom(ConsultationSession $session): void
     {
-        $roomId = 'room-' . $session->uuid;
-        $signalingPath = "/signaling/{$roomId}";
+        $signalingPath = '/signaling/room-' . $session->uuid;
+        $channel = $this->channel();
+        if ($channel === null) {
+            return;
+        }
 
         try {
-            $database = $this->getDatabase();
-            $roomRef = $database->getReference($signalingPath);
-
-            // Mark as inactive then delete
-            $roomRef->update(['status' => 'closed']);
-            $roomRef->remove();
-
-            Log::info('WebRTC room destroyed', [
-                'room_id' => $roomId,
-                'session_id' => $session->id,
-            ]);
+            $channel->tearDownRoom($signalingPath);
+            Log::info('WebRTC room destroyed', ['session_id' => $session->id]);
         } catch (\Throwable $e) {
             Log::warning('Failed to destroy WebRTC room', [
-                'room_id' => $roomId,
+                'session_id' => $session->id,
                 'error' => $e->getMessage(),
             ]);
-            // Non-fatal — Firebase may be momentarily unavailable
         }
     }
 
-    /**
-     * Provider name.
-     */
     public function name(): string
     {
         return 'webrtc';

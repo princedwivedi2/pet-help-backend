@@ -45,6 +45,9 @@ class VetProfileFactory extends Factory
             if ($vetProfile->vet_status === null) {
                 $vetProfile->forceFill(['vet_status' => 'pending']);
             }
+            if ($vetProfile->verification_status === null) {
+                $vetProfile->forceFill(['verification_status' => 'pending']);
+            }
             if ($vetProfile->is_active === null) {
                 $vetProfile->forceFill(['is_active' => true]);
             }
@@ -69,7 +72,10 @@ class VetProfileFactory extends Factory
     public function verified(): static
     {
         return $this->afterMaking(function (VetProfile $vetProfile) {
-            $vetProfile->forceFill(['vet_status' => 'approved']);
+            $vetProfile->forceFill([
+                'vet_status' => 'approved',
+                'verification_status' => 'approved',
+            ]);
         });
     }
 

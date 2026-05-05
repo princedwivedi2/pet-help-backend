@@ -53,5 +53,18 @@ class SearchVetsRequest extends FormRequest
                 'emergency_only' => filter_var($this->emergency_only, FILTER_VALIDATE_BOOLEAN),
             ]);
         }
+
+        // ?languages[]= sends a single empty string; ?languages[]=&languages[]=en sends [''. 'en'].
+        // Strip blank entries before validation so empty arrays / blank items don't 422.
+        if ($this->has('languages')) {
+            $languages = $this->input('languages');
+            if (is_array($languages)) {
+                $languages = array_values(array_filter(
+                    $languages,
+                    fn ($v) => is_string($v) && trim($v) !== ''
+                ));
+                $this->merge(['languages' => $languages]);
+            }
+        }
     }
 }

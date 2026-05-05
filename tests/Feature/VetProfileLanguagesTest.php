@@ -19,10 +19,10 @@ class VetProfileLanguagesTest extends TestCase
         parent::setUp();
 
         $this->vetUser = User::factory()->create(['role' => 'vet']);
-        $this->vetProfile = VetProfile::factory()->create([
+        // vet_status / verification_status are protected ($fillable) — use the verified()
+        // state which forceFills both to 'approved' (the valid enum value).
+        $this->vetProfile = VetProfile::factory()->verified()->create([
             'user_id' => $this->vetUser->id,
-            'vet_status' => 'approved',
-            'verification_status' => 'verified',
         ]);
     }
 
