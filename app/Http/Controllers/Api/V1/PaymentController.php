@@ -398,27 +398,32 @@ class PaymentController extends Controller
         }
 
         if ($event === 'payment.captured') {
-            $razorpayOrderId  = $payload['payload']['payment']['entity']['order_id'] ?? null;
+            $razorpayOrderId   = $payload['payload']['payment']['entity']['order_id'] ?? null;
             $razorpayPaymentId = $payload['payload']['payment']['entity']['id'] ?? null;
 
             if ($razorpayOrderId) {
-                $payment = Payment::where('razorpay_order_id', $razorpayOrderId)
-                    ->whereNotIn('payment_status', ['paid', 'refunded', 'partially_refunded'])
-                    ->first();
+                // HIGH-H1 / D-03: wrap fetch+update in a transaction with lockForUpdate
+                // to prevent concurrent webhook deliveries from double-crediting the wallet.
+                DB::transaction(function () use ($razorpayOrderId, $razorpayPaymentId) {
+                    $payment = Payment::where('razorpay_order_id', $razorpayOrderId)
+                        ->whereNotIn('payment_status', ['paid', 'refunded', 'partially_refunded'])
+                        ->lockForUpdate()
+                        ->first();
 
-                if ($payment && $razorpayPaymentId) {
-                    $payment->update([
-                        'razorpay_payment_id' => $razorpayPaymentId,
-                        'payment_status'      => 'paid',
-                        'paid_at'             => now(),
-                    ]);
+                    if ($payment && $razorpayPaymentId) {
+                        $payment->update([
+                            'razorpay_payment_id' => $razorpayPaymentId,
+                            'payment_status'      => 'paid',
+                            'paid_at'             => now(),
+                        ]);
 
-                    if ($payment->vet_profile_id && $payment->vet_payout_amount > 0) {
-                        $this->paymentService->creditVetWalletPublic($payment);
+                        if ($payment->vet_profile_id && $payment->vet_payout_amount > 0) {
+                            $this->paymentService->creditVetWalletPublic($payment);
+                        }
+
+                        $this->paymentService->updatePayableStatusPublic($payment);
                     }
-
-                    $this->paymentService->updatePayableStatusPublic($payment);
-                }
+                });
             }
         }
 
