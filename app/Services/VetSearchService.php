@@ -82,10 +82,23 @@ class VetSearchService
         ?string $specialization = null,
         ?float $minRating = null,
         ?array $languages = null,
-        int $limit = 30
+        int $limit = 30,
+        ?string $search = null
     ): array {
         $limit = max(1, min($limit, 100));
         $base = $this->baseApprovedQuery($emergencyOnly, $availableOnly, $specialization, $minRating, $languages);
+
+        // Apply search filter across clinic_name, vet_name, and associated user's name.
+        if ($search !== null && trim($search) !== '') {
+            $escaped = $this->escapeLike(trim($search));
+            $base->where(function ($q) use ($escaped) {
+                $q->where('vet_profiles.clinic_name', 'like', '%' . $escaped . '%')
+                  ->orWhere('vet_profiles.vet_name', 'like', '%' . $escaped . '%')
+                  ->orWhereHas('user', function ($uq) use ($escaped) {
+                      $uq->where('name', 'like', '%' . $escaped . '%');
+                  });
+            });
+        }
 
         $allQuery = (clone $base)->select('vet_profiles.*');
         if ($latitude !== null && $longitude !== null) {

@@ -27,6 +27,7 @@ class SearchVetsRequest extends FormRequest
             'min_rating' => ['nullable', 'numeric', 'min:0', 'max:5'],
             'sort_by' => ['nullable', Rule::in(['distance', 'rating'])],
             'limit' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'search' => ['nullable', 'string', 'max:100'],
         ];
     }
 

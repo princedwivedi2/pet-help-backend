@@ -33,13 +33,18 @@ class VetController extends Controller
             languages: $request->input('languages'),
             minRating: $request->min_rating ? (float) $request->min_rating : null,
             limit: (int) ($request->limit ?? 30),
+            search: $request->search,
         );
+
+        $perPage = min((int) ($request->per_page ?? 15), 50);
 
         $nearby = $buckets['nearby_vets']->map(fn ($vet) => $this->formatVet($vet, true))->values();
         $cityVets = $buckets['city_vets']->map(fn ($vet) => $this->formatVet($vet, true))->values();
         $all = $buckets['all_vets']->map(fn ($vet) => $this->formatVet($vet, true))->values();
 
         $legacyVets = $nearby->isNotEmpty() ? $nearby : ($cityVets->isNotEmpty() ? $cityVets : $all);
+
+        $total = $all->count();
 
         return $this->success('Vets retrieved successfully', [
             'nearby_vets' => $nearby,
@@ -52,6 +57,12 @@ class VetController extends Controller
                 'longitude' => $request->lng,
                 'radius_km' => $request->radius_km ?? 10,
                 'city' => $city,
+            ],
+            'pagination' => [
+                'current_page' => 1,
+                'last_page'    => (int) max(1, ceil($total / $perPage)),
+                'per_page'     => $perPage,
+                'total'        => $total,
             ],
         ]);
     }
