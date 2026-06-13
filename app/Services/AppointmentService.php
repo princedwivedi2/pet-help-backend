@@ -343,10 +343,20 @@ class AppointmentService
             ->with(['vetProfile:id,user_id,uuid,clinic_name,vet_name,phone', 'pet:id,name,species']);
 
         if ($status) {
-            if ($status === 'cancelled') {
-                $query->whereIn('status', ['cancelled', 'cancelled_by_user', 'cancelled_by_vet']);
-            } else {
-                $query->byStatus($status);
+            $statuses = array_filter(array_map('trim', explode(',', $status)));
+            $expanded = [];
+            foreach ($statuses as $s) {
+                if ($s === 'cancelled') {
+                    $expanded = array_merge($expanded, ['cancelled', 'cancelled_by_user', 'cancelled_by_vet']);
+                } else {
+                    $expanded[] = $s;
+                }
+            }
+            $expanded = array_values(array_unique($expanded));
+            if (count($expanded) === 1) {
+                $query->where('status', $expanded[0]);
+            } elseif (count($expanded) > 1) {
+                $query->whereIn('status', $expanded);
             }
         }
 
@@ -366,10 +376,20 @@ class AppointmentService
             ->with(['user:id,name,email,phone,address,latitude,longitude', 'pet:id,name,species']);
 
         if ($status) {
-            if ($status === 'cancelled') {
-                $query->whereIn('status', ['cancelled', 'cancelled_by_user', 'cancelled_by_vet']);
-            } else {
-                $query->byStatus($status);
+            $statuses = array_filter(array_map('trim', explode(',', $status)));
+            $expanded = [];
+            foreach ($statuses as $s) {
+                if ($s === 'cancelled') {
+                    $expanded = array_merge($expanded, ['cancelled', 'cancelled_by_user', 'cancelled_by_vet']);
+                } else {
+                    $expanded[] = $s;
+                }
+            }
+            $expanded = array_values(array_unique($expanded));
+            if (count($expanded) === 1) {
+                $query->where('status', $expanded[0]);
+            } elseif (count($expanded) > 1) {
+                $query->whereIn('status', $expanded);
             }
         }
 
