@@ -10,6 +10,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
+// Phase 20 audit: handles pet health features only (dashboard, notes, documents, medications, health summary, data export). CRUD lives in PetService — intentionally separate (single responsibility). See 20-BACKEND-CLEANUP-REPORT.md §Service Consolidation.
 class PetManagementService
 {
     /**

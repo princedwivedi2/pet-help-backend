@@ -18,6 +18,10 @@ return new class extends Migration
             $table->string('address', 300)->nullable();
             $table->text('description');
             $table->enum('emergency_type', ['injury', 'illness', 'poisoning', 'accident', 'breathing', 'seizure', 'other'])->default('other');
+            // Phase 20 audit (BE-09): 'sos_in_progress' is a deprecated duplicate of 'in_progress'.
+            // It was removed from the MySQL MODIFY statement in the 2026_02_27 expand migration.
+            // Canonical active-progress value is 'in_progress'. No data migration required.
+            // SosController and SosRequest model reference only 'in_progress' for post-acceptance flow.
             $table->enum('status', [
                 'pending', 'acknowledged', 'in_progress', 'completed', 'cancelled',
                 'sos_pending', 'sos_accepted', 'vet_on_the_way', 'arrived',

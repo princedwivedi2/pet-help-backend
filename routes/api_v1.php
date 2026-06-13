@@ -65,6 +65,7 @@ Route::middleware('throttle:3,10')->group(function () {
 });
 
 // ─── Public: Guides & Vets ──────────────────────────────────────────
+// NOTE: Not consumed by mobile V1 — retained for admin/future use (Phase 20 cleanup audit). See 20-BACKEND-CLEANUP-REPORT.md.
 Route::get('emergency-categories', [GuideController::class, 'categories']);
 Route::get('guides', [GuideController::class, 'index']);
 Route::get('guides/{id}', [GuideController::class, 'show']);
@@ -104,6 +105,7 @@ Route::prefix('blog')->group(function () {
 });
 
 // ─── Public: Community ──────────────────────────────────────────────
+// NOTE: Not consumed by mobile V1 — retained for admin/future use (Phase 20 cleanup audit). See 20-BACKEND-CLEANUP-REPORT.md.
 Route::prefix('community')->group(function () {
     Route::get('topics', [CommunityController::class, 'topics']);
     Route::get('posts', [CommunityController::class, 'posts']);
@@ -174,6 +176,7 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::get('appointments', [PetController::class, 'appointments']);
         Route::get('visit-records', [PetController::class, 'visitRecords']);
         // Pet-scoped incident history
+        // NOTE: Not consumed by mobile V1 — retained for admin/future use (Phase 20 cleanup audit). See 20-BACKEND-CLEANUP-REPORT.md.
         Route::get('incidents', [IncidentController::class, 'petIncidents']);
     });
 
@@ -186,6 +189,7 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
     });
 
     // Incidents (user-scoped via controller)
+    // NOTE: Not consumed by mobile V1 — retained for admin/future use (Phase 20 cleanup audit). See 20-BACKEND-CLEANUP-REPORT.md.
     Route::get('incidents', [IncidentController::class, 'index']);
     Route::get('incidents/{uuid}', [IncidentController::class, 'show']);
 
@@ -256,6 +260,7 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
     });
 
     // Community: Posts, Replies, Votes, Reports (rate-limited)
+    // NOTE: Not consumed by mobile V1 — retained for admin/future use (Phase 20 cleanup audit). See 20-BACKEND-CLEANUP-REPORT.md.
     Route::middleware('throttle:30,1')->group(function () {
         Route::post('community/posts', [CommunityController::class, 'storePost']);
         Route::delete('community/posts/{uuid}', [CommunityController::class, 'destroyPost']);

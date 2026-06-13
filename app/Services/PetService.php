@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 
+// Phase 20 audit: handles Pet CRUD only. Health/dashboard features live in PetManagementService — intentionally separate (single responsibility). See 20-BACKEND-CLEANUP-REPORT.md §Service Consolidation.
 class PetService
 {
     public const MAX_PETS_PER_USER = 10;
