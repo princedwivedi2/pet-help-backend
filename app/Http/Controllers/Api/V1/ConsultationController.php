@@ -31,6 +31,7 @@ class ConsultationController extends Controller
             'issue_description' => 'nullable|string|max:2000',
             'fee_amount' => 'nullable|integer|min:0',
             'payment_uuid' => 'nullable|string',
+            'vet_uuid' => 'nullable|string|exists:vet_profiles,uuid',
         ]);
 
         $user = $request->user();
@@ -41,6 +42,18 @@ class ConsultationController extends Controller
                 return $this->forbidden('Pet does not belong to you.');
             }
             $petId = $pet->id;
+        }
+
+        // CRIT-01 / D-01: validate fee_amount against vet's stored consultation_fee
+        if (!empty($data['vet_uuid']) && isset($data['fee_amount'])) {
+            $vetProfile = \App\Models\VetProfile::where('uuid', $data['vet_uuid'])->first();
+            if ($vetProfile && (int) $data['fee_amount'] !== (int) $vetProfile->consultation_fee) {
+                return $this->error(
+                    'Fee amount does not match the vet\'s consultation fee.',
+                    ['fee_amount' => ['Expected ' . $vetProfile->consultation_fee]],
+                    422
+                );
+            }
         }
 
         $paymentId = null;
@@ -147,6 +160,14 @@ class ConsultationController extends Controller
             if ($vetProfile && $session->vet_profile_id === $vetProfile->id) $role = 'vet';
         }
         if (!$role) return $this->forbidden('You are not a participant in this consultation.');
+
+        // CRIT-02 / D-02: gate join on payment status when a payment is attached
+        if ($session->payment_id !== null) {
+            $payment = \App\Models\Payment::find($session->payment_id);
+            if (!$payment || $payment->payment_status !== 'paid') {
+                return $this->error('Payment has not been completed for this consultation.', null, 422);
+            }
+        }
 
         try {
             $payload = $this->consultationService->join($session, $user, $role);
