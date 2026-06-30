@@ -464,7 +464,22 @@ class PetManagementController extends Controller
             return null;
         }
 
-        return $this->forbidden('Only the pet owner or admin can access pet documents.');
+        if ($user->isVet()) {
+            $vetProfile = $user->vetProfile;
+            if ($vetProfile) {
+                $hasAppointment = $pet->appointments()
+                    ->where('vet_profile_id', $vetProfile->id)
+                    ->exists();
+                $hasSos = $pet->sosRequests()
+                    ->where('assigned_vet_id', $vetProfile->id)
+                    ->exists();
+                if ($hasAppointment || $hasSos) {
+                    return null;
+                }
+            }
+        }
+
+        return $this->forbidden('Only the pet owner, admin, or an assigned vet can access pet documents.');
     }
 
     // ──── Pet Medications ──────────────────────────────────────

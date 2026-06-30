@@ -45,16 +45,19 @@ class CreateAdmin extends Command
         $user = User::firstOrCreate(
             ['email' => $email],
             [
-                'name'              => $name,
-                'password'          => Hash::make($password),
-                'email_verified_at' => now(),
+                'name'     => $name,
+                'password' => Hash::make($password),
             ]
         );
 
         if ($user->wasRecentlyCreated) {
-            $user->role = 'admin';
-            $user->save();
-            $this->info("✓ Admin user created: {$email}");
+            // role + email_verified_at are not in $fillable (security: prevent mass-assign).
+            // forceFill bypasses the guard for this admin-gated bootstrap path.
+            $user->forceFill([
+                'role'              => 'admin',
+                'email_verified_at' => now(),
+            ])->save();
+            $this->info("Admin user created: {$email}");
             return self::SUCCESS;
         }
 

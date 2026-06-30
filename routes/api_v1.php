@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\V1\AppointmentController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BlogController;
 use App\Http\Controllers\Api\V1\CommunityController;
+use App\Http\Controllers\Api\V1\ConsultationController;
 use App\Http\Controllers\Api\V1\GuideController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\IncidentController;
@@ -30,6 +31,8 @@ Route::prefix('auth')->group(function () {
     Route::middleware('throttle:5,1')->group(function () {
         Route::post('register', [AuthController::class, 'register']);
         Route::post('login', [AuthController::class, 'login']);
+        Route::post('otp/send', [AuthController::class, 'sendOtp'])->middleware('throttle:3,1');
+        Route::post('otp/verify', [AuthController::class, 'verifyOtp'])->middleware('throttle:10,1');
         Route::post('forgot-password', [AuthController::class, 'forgotPassword']);
         Route::post('reset-password', [AuthController::class, 'resetPassword']);
     });
@@ -62,6 +65,7 @@ Route::middleware('throttle:3,10')->group(function () {
 });
 
 // ─── Public: Guides & Vets ──────────────────────────────────────────
+// NOTE: Not consumed by mobile V1 — retained for admin/future use (Phase 20 cleanup audit). See 20-BACKEND-CLEANUP-REPORT.md.
 Route::get('emergency-categories', [GuideController::class, 'categories']);
 Route::get('guides', [GuideController::class, 'index']);
 Route::get('guides/{id}', [GuideController::class, 'show']);
@@ -101,6 +105,7 @@ Route::prefix('blog')->group(function () {
 });
 
 // ─── Public: Community ──────────────────────────────────────────────
+// NOTE: Not consumed by mobile V1 — retained for admin/future use (Phase 20 cleanup audit). See 20-BACKEND-CLEANUP-REPORT.md.
 Route::prefix('community')->group(function () {
     Route::get('topics', [CommunityController::class, 'topics']);
     Route::get('posts', [CommunityController::class, 'posts']);
@@ -171,6 +176,7 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::get('appointments', [PetController::class, 'appointments']);
         Route::get('visit-records', [PetController::class, 'visitRecords']);
         // Pet-scoped incident history
+        // NOTE: Not consumed by mobile V1 — retained for admin/future use (Phase 20 cleanup audit). See 20-BACKEND-CLEANUP-REPORT.md.
         Route::get('incidents', [IncidentController::class, 'petIncidents']);
     });
 
@@ -183,6 +189,7 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
     });
 
     // Incidents (user-scoped via controller)
+    // NOTE: Not consumed by mobile V1 — retained for admin/future use (Phase 20 cleanup audit). See 20-BACKEND-CLEANUP-REPORT.md.
     Route::get('incidents', [IncidentController::class, 'index']);
     Route::get('incidents/{uuid}', [IncidentController::class, 'show']);
 
@@ -215,6 +222,7 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::get('/', [PaymentController::class, 'index']);
         Route::post('/create-order', [PaymentController::class, 'createOrder']);
         Route::post('/verify', [PaymentController::class, 'verify']);
+        Route::post('/mock-confirm', [PaymentController::class, 'mockConfirm']); // dev only — 404 when PAYMENTS_MOCK=false
         Route::post('/offline', [PaymentController::class, 'recordOffline']);
         Route::get('/wallet', [PaymentController::class, 'wallet']);
         Route::get('/{uuid}', [PaymentController::class, 'show']);
@@ -223,8 +231,9 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
 
     // Reviews - rate limited
     Route::middleware('throttle:10,1')->prefix('reviews')->group(function () {
+        Route::get('/', [ReviewController::class, 'index']);
         Route::post('/', [ReviewController::class, 'store']);
-        Route::put('/{uuid}/reply', [ReviewController::class, 'reply']);
+        Route::put('/{uuid}/reply', [ReviewController::class, 'reply'])->middleware('role:vet');
         Route::put('/{uuid}/flag', [ReviewController::class, 'flag']);
     });
 
@@ -253,6 +262,7 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
     });
 
     // Community: Posts, Replies, Votes, Reports (rate-limited)
+    // NOTE: Not consumed by mobile V1 — retained for admin/future use (Phase 20 cleanup audit). See 20-BACKEND-CLEANUP-REPORT.md.
     Route::middleware('throttle:30,1')->group(function () {
         Route::post('community/posts', [CommunityController::class, 'storePost']);
         Route::delete('community/posts/{uuid}', [CommunityController::class, 'destroyPost']);
@@ -286,6 +296,23 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
     Route::middleware('throttle:20,1')->prefix('subscriptions')->group(function () {
         Route::post('/', [SubscriptionController::class, 'purchase']);
         Route::get('/active', [SubscriptionController::class, 'active']);
+    });
+
+    // ─── Online Consultations (instant + scheduled) ──────────────────
+    // Shared between user (initiates) and vet (accepts/serves). Role-specific
+    // actions check inside the controller so a single route surface works for both.
+    Route::middleware('throttle:30,1')->prefix('consultations')->group(function () {
+        Route::get('/', [ConsultationController::class, 'index']);
+        Route::post('/', [ConsultationController::class, 'start']);                      // user
+        Route::get('/{uuid}', [ConsultationController::class, 'show']);
+        Route::post('/{uuid}/accept', [ConsultationController::class, 'accept']);        // vet
+        Route::post('/{uuid}/join', [ConsultationController::class, 'join']);
+        Route::post('/{uuid}/connection-failure', [ConsultationController::class, 'connectionFailure']);
+        Route::post('/{uuid}/complete', [ConsultationController::class, 'complete']);    // vet
+        Route::post('/{uuid}/cancel', [ConsultationController::class, 'vetCancel']);     // vet
+        Route::get('/{uuid}/messages', [ConsultationController::class, 'messages']);
+        Route::post('/{uuid}/messages', [ConsultationController::class, 'postMessage']);
+        Route::get('/{consultation:uuid}/rtc-token', [ConsultationController::class, 'rtcToken']); // vet
     });
 });
 

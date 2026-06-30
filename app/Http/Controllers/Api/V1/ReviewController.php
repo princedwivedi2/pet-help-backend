@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Appointment;
+use App\Models\ConsultationSession;
 use App\Models\SosRequest;
 use App\Models\VetProfile;
 use App\Services\ReviewService;
@@ -20,21 +21,52 @@ class ReviewController extends Controller
     ) {}
 
     /**
-     * Create a review for a completed appointment.
+     * List reviews for the authenticated vet (their received reviews).
+     * GET /api/v1/reviews
+     */
+    public function index(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $vetProfile = VetProfile::where('user_id', $user->id)->first();
+
+        if (!$vetProfile) {
+            return $this->forbidden('Only vets can list their received reviews.');
+        }
+
+        $perPage = min((int) ($request->per_page ?? 15), 50);
+        $reviews = $this->reviewService->getMyReceivedReviews($vetProfile->id, $perPage);
+
+        return $this->success('Reviews retrieved', [
+            'reviews' => $reviews->items(),
+            'pagination' => [
+                'current_page' => $reviews->currentPage(),
+                'last_page'    => $reviews->lastPage(),
+                'per_page'     => $reviews->perPage(),
+                'total'        => $reviews->total(),
+            ],
+            'avg_rating'    => $vetProfile->avg_rating,
+            'total_reviews' => $vetProfile->total_reviews,
+        ]);
+    }
+
+    /**
+     * Create a review for a completed appointment, SOS, or consultation.
      * POST /api/v1/reviews
      */
     public function store(Request $request): JsonResponse
     {
         $request->validate([
-            'appointment_uuid' => 'required_without:sos_uuid|string',
-            'sos_uuid'         => 'required_without:appointment_uuid|string',
-            'rating'           => 'required|integer|min:1|max:5',
-            'comment'          => 'nullable|string|max:1000',
+            'appointment_uuid'    => 'required_without_all:sos_uuid,consultation_uuid|string',
+            'sos_uuid'            => 'required_without_all:appointment_uuid,consultation_uuid|string',
+            'consultation_uuid'   => 'required_without_all:appointment_uuid,sos_uuid|string',
+            'rating'              => 'required|integer|min:1|max:5',
+            'comment'             => 'nullable|string|max:1000',
         ]);
 
         $user = $request->user();
         $appointmentId = null;
         $sosRequestId = null;
+        $consultationSessionId = null;
         $vetProfileId = null;
 
         if ($request->filled('appointment_uuid')) {
@@ -45,12 +77,26 @@ class ReviewController extends Controller
             if ($appointment->user_id !== $user->id) {
                 return $this->forbidden('You can only review your own appointments.');
             }
-            // CRIT-02: Only completed appointments can be reviewed
             if ($appointment->status !== 'completed') {
                 return $this->error('Reviews can only be submitted for completed appointments.', null, 422);
             }
             $appointmentId = $appointment->id;
-            $vetProfileId = $appointment->vet_profile_id;
+            $vetProfileId  = $appointment->vet_profile_id;
+
+        } elseif ($request->filled('consultation_uuid')) {
+            $consultation = ConsultationSession::where('uuid', $request->consultation_uuid)->first();
+            if (!$consultation) {
+                return $this->notFound('Consultation not found');
+            }
+            if ($consultation->user_id !== $user->id) {
+                return $this->forbidden('You can only review your own consultations.');
+            }
+            if ($consultation->status !== 'completed') {
+                return $this->error('Reviews can only be submitted for completed consultations.', null, 422);
+            }
+            $consultationSessionId = $consultation->id;
+            $vetProfileId          = $consultation->vet_profile_id;
+
         } else {
             $sosRequest = SosRequest::where('uuid', $request->sos_uuid)->first();
             if (!$sosRequest) {
@@ -59,7 +105,6 @@ class ReviewController extends Controller
             if ($sosRequest->user_id !== $user->id) {
                 return $this->forbidden('You can only review your own SOS requests.');
             }
-            // CRIT-02: Only completed SOS requests can be reviewed
             if (!in_array($sosRequest->status, ['completed', 'sos_completed'])) {
                 return $this->error('Reviews can only be submitted for completed SOS requests.', null, 422);
             }
@@ -76,11 +121,9 @@ class ReviewController extends Controller
                 userId: $user->id,
                 vetProfileId: $vetProfileId,
                 appointmentId: $appointmentId,
-                data: [
-                    'rating' => (int) $request->rating,
-                    'comment' => $request->comment,
-                ],
+                data: ['rating' => (int) $request->rating, 'comment' => $request->comment],
                 sosRequestId: $sosRequestId,
+                consultationSessionId: $consultationSessionId,
             );
 
             return $this->created('Review submitted successfully', ['review' => $review]);

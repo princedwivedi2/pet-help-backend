@@ -6,10 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\Auth\ChangePasswordRequest;
 use App\Http\Requests\Api\V1\Auth\ForgotPasswordRequest;
 use App\Http\Requests\Api\V1\Auth\LoginRequest;
+use App\Http\Requests\Api\V1\Auth\OtpSendRequest;
+use App\Http\Requests\Api\V1\Auth\OtpVerifyRequest;
 use App\Http\Requests\Api\V1\Auth\RegisterRequest;
 use App\Http\Requests\Api\V1\Auth\ResetPasswordRequest;
 use App\Http\Requests\Api\V1\Auth\UpdateProfileRequest;
 use App\Models\User;
+use App\Services\OtpService;
 use App\Traits\ApiResponse;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\JsonResponse;
@@ -22,6 +25,8 @@ use Illuminate\Database\QueryException;
 class AuthController extends Controller
 {
     use ApiResponse;
+
+    public function __construct(private OtpService $otpService) {}
 
     /**
      * Register a new user
@@ -134,8 +139,9 @@ class AuthController extends Controller
     {
         $user = $request->user();
 
-        // Clear FCM token on logout so the device no longer receives push notifications
+        // Clear FCM token and deactivate all device token rows so pushes stop immediately
         $user->update(['fcm_token' => null]);
+        $user->deviceTokens()->update(['is_active' => false]);
 
         $currentToken = $user->currentAccessToken();
 
@@ -356,17 +362,77 @@ class AuthController extends Controller
     // ─── Device Token (FCM) ─────────────────────────────────────────
 
     /**
-     * Register or update the authenticated user's FCM device token.
+     * Register or update an FCM device token for the authenticated user.
+     *
+     * Upsert semantics: if the token row already exists (same device reinstall
+     * or other user's old token), we update last_seen_at, reactivate, and
+     * re-assign user_id to the current caller. FCM tokens are device-scoped —
+     * they MUST NOT be retained across users on the same handset.
+     *
+     * Also keeps `users.fcm_token` in sync for legacy callers during the
+     * transition period; will be dropped once consumers are migrated.
+     *
      * POST /api/v1/auth/device-token
      */
     public function registerDeviceToken(Request $request): JsonResponse
     {
-        $request->validate([
+        $data = $request->validate([
             'token' => ['required', 'string', 'max:500'],
+            'platform' => ['nullable', 'string', 'in:ios,android,web,unknown'],
         ]);
 
-        $request->user()->update(['fcm_token' => $request->token]);
+        $user = $request->user();
+        $platform = $data['platform'] ?? 'unknown';
+
+        \App\Models\DeviceToken::updateOrCreate(
+            ['token' => $data['token']],
+            [
+                'user_id' => $user->id,
+                'platform' => $platform,
+                'last_seen_at' => now(),
+                'is_active' => true,
+            ]
+        );
+
+        // Keep legacy single column in sync for any code still reading it.
+        $user->update(['fcm_token' => $data['token']]);
 
         return $this->success('Device token registered successfully');
+    }
+
+    public function sendOtp(OtpSendRequest $request): JsonResponse
+    {
+        $challenge = $this->otpService->send(
+            identifier: $request->identifier,
+            channel: $request->input('channel'),
+            purpose: $request->input('purpose')
+        );
+
+        return $this->created('OTP sent successfully', [
+            'challenge_uuid' => $challenge->uuid,
+            'identifier' => $challenge->identifier,
+            'channel' => $challenge->channel,
+            'purpose' => $challenge->purpose,
+            'expires_at' => $challenge->expires_at,
+        ]);
+    }
+
+    public function verifyOtp(OtpVerifyRequest $request): JsonResponse
+    {
+        $challenge = $this->otpService->verify(
+            identifier: $request->identifier,
+            code: $request->code,
+            channel: $request->input('channel'),
+            purpose: $request->input('purpose')
+        );
+
+        return $this->success('OTP verified successfully', [
+            'verified' => true,
+            'challenge_uuid' => $challenge->uuid,
+            'identifier' => $challenge->identifier,
+            'channel' => $challenge->channel,
+            'purpose' => $challenge->purpose,
+            'verified_at' => $challenge->verified_at,
+        ]);
     }
 }

@@ -12,42 +12,39 @@ class ReviewService
     public function __construct(private AuditService $auditService) {}
 
     /**
-     * Create a review for a vet after a completed appointment.
+     * Create a review for a vet after a completed appointment, SOS, or consultation.
      */
-    public function create(int $userId, int $vetProfileId, ?int $appointmentId, array $data, ?int $sosRequestId = null): Review
-    {
-        return DB::transaction(function () use ($userId, $vetProfileId, $appointmentId, $data, $sosRequestId) {
-            // Check for duplicate review
-            if ($appointmentId) {
-                $existing = Review::where('user_id', $userId)
-                    ->where('appointment_id', $appointmentId)
-                    ->exists();
-
-                if ($existing) {
-                    throw new \DomainException('You have already reviewed this appointment.');
-                }
+    public function create(
+        int $userId,
+        int $vetProfileId,
+        ?int $appointmentId,
+        array $data,
+        ?int $sosRequestId = null,
+        ?int $consultationSessionId = null,
+    ): Review {
+        return DB::transaction(function () use ($userId, $vetProfileId, $appointmentId, $data, $sosRequestId, $consultationSessionId) {
+            if ($appointmentId && Review::where('user_id', $userId)->where('appointment_id', $appointmentId)->exists()) {
+                throw new \DomainException('You have already reviewed this appointment.');
             }
 
-            if ($sosRequestId) {
-                $existing = Review::where('user_id', $userId)
-                    ->where('sos_request_id', $sosRequestId)
-                    ->exists();
+            if ($sosRequestId && Review::where('user_id', $userId)->where('sos_request_id', $sosRequestId)->exists()) {
+                throw new \DomainException('You have already reviewed this SOS request.');
+            }
 
-                if ($existing) {
-                    throw new \DomainException('You have already reviewed this SOS request.');
-                }
+            if ($consultationSessionId && Review::where('user_id', $userId)->where('consultation_session_id', $consultationSessionId)->exists()) {
+                throw new \DomainException('You have already reviewed this consultation.');
             }
 
             $review = Review::create([
-                'user_id' => $userId,
-                'vet_profile_id' => $vetProfileId,
-                'appointment_id' => $appointmentId,
-                'sos_request_id' => $sosRequestId,
-                'rating' => $data['rating'],
-                'comment' => $data['comment'] ?? null,
+                'user_id'                => $userId,
+                'vet_profile_id'         => $vetProfileId,
+                'appointment_id'         => $appointmentId,
+                'sos_request_id'         => $sosRequestId,
+                'consultation_session_id' => $consultationSessionId,
+                'rating'                 => $data['rating'],
+                'comment'                => $data['comment'] ?? null,
             ]);
 
-            // Update vet profile rating
             $this->recalculateVetRating($vetProfileId);
 
             return $review->load(['user:id,name']);
@@ -88,6 +85,17 @@ class ReviewService
         );
 
         return $review;
+    }
+
+    /**
+     * Get reviews received by the authenticated vet (their own profile).
+     */
+    public function getMyReceivedReviews(int $vetProfileId, int $perPage = 15): LengthAwarePaginator
+    {
+        return Review::forVet($vetProfileId)
+            ->with(['user:id,name,avatar', 'appointment:id,uuid,scheduled_at', 'consultationSession:id,uuid'])
+            ->orderByDesc('created_at')
+            ->paginate($perPage);
     }
 
     /**

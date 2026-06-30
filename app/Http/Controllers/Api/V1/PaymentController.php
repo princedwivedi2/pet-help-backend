@@ -4,13 +4,17 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Appointment;
+use App\Models\ConsultationSession;
 use App\Models\Payment;
 use App\Models\SosRequest;
 use App\Models\VetProfile;
+use App\Models\WebhookEvent;
 use App\Services\PaymentService;
 use App\Traits\ApiResponse;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class PaymentController extends Controller
 {
@@ -27,14 +31,14 @@ class PaymentController extends Controller
     public function createOrder(Request $request): JsonResponse
     {
         $request->validate([
-            'payable_type' => 'required|in:appointment,sos',
-            'payable_uuid' => 'required|string',
+            'payable_type'  => 'required|in:appointment,sos,consultation',
+            'payable_uuid'  => 'required|string',
             'payment_model' => 'nullable|in:platform_fee,full_payment',
         ]);
 
         $user = $request->user();
 
-        // Resolve the payable entity
+        // Resolve the payable entity and derive amount + vet
         if ($request->payable_type === 'appointment') {
             $payable = Appointment::where('uuid', $request->payable_uuid)->first();
             if (!$payable) {
@@ -52,6 +56,22 @@ class PaymentController extends Controller
             } else {
                 $amount = 500;
             }
+            $vetProfileId = $payable->vet_profile_id;
+            $payableType  = 'appointment';
+        } elseif ($request->payable_type === 'consultation') {
+            $payable = ConsultationSession::where('uuid', $request->payable_uuid)->first();
+            if (!$payable) {
+                return $this->notFound('Consultation not found');
+            }
+            if ($payable->user_id !== $user->id) {
+                return $this->forbidden('You can only pay for your own consultations.');
+            }
+            if (!$payable->fee_amount) {
+                return $this->error('No fee has been set for this consultation.', null, 422);
+            }
+            $amount       = $payable->fee_amount;
+            $vetProfileId = $payable->vet_profile_id;
+            $payableType  = 'consultation';
         } else {
             $payable = SosRequest::where('uuid', $request->payable_uuid)->first();
             if (!$payable) {
@@ -60,18 +80,16 @@ class PaymentController extends Controller
             if ($payable->user_id !== $user->id) {
                 return $this->forbidden('You can only pay for your own SOS requests.');
             }
-            $amount = $payable->emergency_charge ?? 1000;
+            $amount       = $payable->emergency_charge ?? 1000;
+            $vetProfileId = $payable->assigned_vet_id;
+            $payableType  = 'sos_request';
         }
 
         try {
-            $vetProfileId = $request->payable_type === 'appointment'
-                ? $payable->vet_profile_id
-                : $payable->assigned_vet_id;
-
             $result = $this->paymentService->createOrder(
                 userId: $user->id,
                 vetProfileId: $vetProfileId,
-                payableType: $request->payable_type === 'appointment' ? 'appointment' : 'sos_request',
+                payableType: $payableType,
                 payableId: $payable->id,
                 amount: $amount,
                 paymentModel: $request->payment_model ?? 'platform_fee'
@@ -331,6 +349,10 @@ class PaymentController extends Controller
     /**
      * Handle Razorpay webhook events.
      * POST /api/payments/webhook  (no auth — verified by HMAC signature)
+     *
+     * Idempotency: Razorpay retries on network failures, so the same `event.id` can
+     * arrive multiple times. We dedupe via UNIQUE(provider, event_id) on the
+     * webhook_events table and short-circuit with 200 on duplicate.
      */
     public function webhook(Request $request): JsonResponse
     {
@@ -353,31 +375,81 @@ class PaymentController extends Controller
 
         $payload = json_decode($rawBody, true);
         $event   = $payload['event'] ?? null;
+        $eventId = $payload['id'] ?? null;
 
-        if ($event === 'payment.captured') {
-            $razorpayOrderId  = $payload['payload']['payment']['entity']['order_id'] ?? null;
+        if (empty($eventId)) {
+            // Razorpay always sends `id`; if missing, treat as malformed.
+            \Illuminate\Support\Facades\Log::warning('Razorpay webhook missing event id', ['event' => $event]);
+            return response()->json(['status' => 'ok']); // 200 so Razorpay stops retrying
+        }
+
+        // Idempotency guard. Try to insert the event row; if it already exists,
+        // this is a replay — return 200 without re-running side effects.
+        try {
+            DB::transaction(function () use ($payload, $event, $eventId) {
+                WebhookEvent::create([
+                    'provider'   => 'razorpay',
+                    'event_id'   => $eventId,
+                    'event_type' => $event ?? 'unknown',
+                    'payload'    => $payload,
+                ]);
+            });
+        } catch (QueryException $e) {
+            // 23000 = integrity constraint violation (UNIQUE on provider+event_id).
+            // SQLite reports as "UNIQUE constraint failed". Both = duplicate replay.
+            $sqlState = (string) ($e->errorInfo[0] ?? '');
+            $isDuplicate = $sqlState === '23000'
+                || str_contains($e->getMessage(), 'UNIQUE constraint failed')
+                || str_contains($e->getMessage(), 'Duplicate entry');
+
+            if ($isDuplicate) {
+                \Illuminate\Support\Facades\Log::info('Razorpay webhook replay ignored', [
+                    'event_id' => $eventId,
+                    'event_type' => $event,
+                ]);
+                return response()->json(['status' => 'ok']);
+            }
+            throw $e;
+        }
+
+        // Both events carry the same nested path to the payment entity.
+        // payment.captured — fires for manual-capture flows.
+        // order.paid       — fires for auto-capture (default Razorpay checkout behaviour).
+        // Handling both ensures server-side reconciliation regardless of capture mode.
+        if (in_array($event, ['payment.captured', 'order.paid'], true)) {
+            $razorpayOrderId   = $payload['payload']['payment']['entity']['order_id'] ?? null;
             $razorpayPaymentId = $payload['payload']['payment']['entity']['id'] ?? null;
 
             if ($razorpayOrderId) {
-                $payment = Payment::where('razorpay_order_id', $razorpayOrderId)
-                    ->whereNotIn('payment_status', ['paid', 'refunded', 'partially_refunded'])
-                    ->first();
+                // HIGH-H1 / D-03: wrap fetch+update in a transaction with lockForUpdate
+                // to prevent concurrent webhook deliveries from double-crediting the wallet.
+                DB::transaction(function () use ($razorpayOrderId, $razorpayPaymentId) {
+                    $payment = Payment::where('razorpay_order_id', $razorpayOrderId)
+                        ->whereNotIn('payment_status', ['paid', 'refunded', 'partially_refunded'])
+                        ->lockForUpdate()
+                        ->first();
 
-                if ($payment && $razorpayPaymentId) {
-                    $payment->update([
-                        'razorpay_payment_id' => $razorpayPaymentId,
-                        'payment_status'      => 'paid',
-                        'paid_at'             => now(),
-                    ]);
+                    if ($payment && $razorpayPaymentId) {
+                        $payment->update([
+                            'razorpay_payment_id' => $razorpayPaymentId,
+                            'payment_status'      => 'paid',
+                            'paid_at'             => now(),
+                        ]);
 
-                    if ($payment->vet_profile_id && $payment->vet_payout_amount > 0) {
-                        $this->paymentService->creditVetWalletPublic($payment);
+                        if ($payment->vet_profile_id && $payment->vet_payout_amount > 0) {
+                            $this->paymentService->creditVetWalletPublic($payment);
+                        }
+
+                        $this->paymentService->updatePayableStatusPublic($payment);
                     }
-
-                    $this->paymentService->updatePayableStatusPublic($payment);
-                }
+                });
             }
         }
+
+        // Mark the event as fully processed for observability.
+        WebhookEvent::where('provider', 'razorpay')
+            ->where('event_id', $eventId)
+            ->update(['processed_at' => now()]);
 
         return response()->json(['status' => 'ok']);
     }
@@ -410,5 +482,52 @@ class PaymentController extends Controller
             'wallet' => $wallet,
             'transactions' => $transactions,
         ]);
+    }
+
+    /**
+     * Confirm a mock payment (dev/test only).
+     * POST /api/v1/payments/mock-confirm
+     *
+     * Requires PAYMENTS_MOCK=true in .env. Returns 404 when the flag is off so the
+     * endpoint is invisible in production. Runs the same side-effects as a real
+     * Razorpay capture: marks the payment row paid, credits the vet wallet, and
+     * calls updatePayableStatus (appointment / consultation / subscription / SOS).
+     * Idempotent — replaying with an already-paid payment_uuid is safe.
+     *
+     * Request:  { "payment_uuid": "<uuid>" }
+     * Response: { "success": true, "message": "Payment confirmed", "data": { "payment": {...} } }
+     */
+    public function mockConfirm(Request $request): JsonResponse
+    {
+        // Invisible in production / when flag is off — looks like any other 404.
+        if (!$this->paymentService->isForcedMock()) {
+            return $this->notFound('Not found');
+        }
+
+        // Extra production safety — belt-and-suspenders against a misconfigured deploy.
+        if (config('app.env') === 'production') {
+            return $this->notFound('Not found');
+        }
+
+        $request->validate([
+            'payment_uuid' => 'required|string',
+        ]);
+
+        $user    = $request->user();
+        $payment = Payment::where('uuid', $request->payment_uuid)
+            ->where('user_id', $user->id)
+            ->first();
+
+        if (!$payment) {
+            return $this->notFound('Payment not found');
+        }
+
+        try {
+            $payment = $this->paymentService->confirmMockPayment($payment);
+
+            return $this->success('Payment confirmed', ['payment' => $payment]);
+        } catch (\DomainException $e) {
+            return $this->error($e->getMessage(), null, 422);
+        }
     }
 }

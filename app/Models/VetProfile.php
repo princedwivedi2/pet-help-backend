@@ -13,6 +13,14 @@ class VetProfile extends Model
 {
     use HasFactory, SoftDeletes;
 
+    /**
+     * Mass-assignable attributes.
+     *
+     * `vet_status`, `verification_status`, `is_active`, `is_featured`, and `featured_until`
+     * are intentionally EXCLUDED. Any code that needs to update them must go through
+     * VetOnboardingService (admin-gated transitions) using forceFill(), not mass assignment.
+     * This prevents a vet from PUTting their own profile to set themselves to `approved`.
+     */
     protected $fillable = [
         'user_id',
         'clinic_name',
@@ -28,6 +36,7 @@ class VetProfile extends Model
         'longitude',
         'qualifications',
         'specialization',
+        'languages',
         'license_number',
         'years_of_experience',
         'license_document_url',
@@ -39,17 +48,12 @@ class VetProfile extends Model
         'working_hours',
         'is_emergency_available',
         'is_24_hours',
-        'vet_status',
-        'verification_status',
-        'is_active',
         'availability_status',
         'consultation_fee',
         'home_visit_fee',
         'online_fee',
         'max_home_visit_km',
         'consultation_types',
-        'is_featured',
-        'featured_until',
         'total_appointments',
         'completed_appointments',
         'acceptance_rate',
@@ -63,6 +67,7 @@ class VetProfile extends Model
             'longitude' => 'decimal:8',
             'services' => 'array',
             'accepted_species' => 'array',
+            'languages' => 'array',
             'working_hours' => 'array',
             'verification_documents' => 'array',
             'consultation_types' => 'array',

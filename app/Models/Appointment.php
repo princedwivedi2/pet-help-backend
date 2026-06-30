@@ -119,6 +119,11 @@ class Appointment extends Model
         return $this->hasOne(VisitRecord::class);
     }
 
+    public function consultationSession(): HasOne
+    {
+        return $this->hasOne(ConsultationSession::class);
+    }
+
     public function review(): HasOne
     {
         return $this->hasOne(Review::class);
@@ -127,6 +132,20 @@ class Appointment extends Model
     public function auditLogs(): MorphMany
     {
         return $this->morphMany(AuditLog::class, 'auditable');
+    }
+
+    /**
+     * Virtual attribute: UUID of the linked ConsultationSession, if any.
+     * Only queries the DB when the relationship has not been eager-loaded.
+     */
+    protected $appends = ['consultation_uuid'];
+
+    public function getConsultationUuidAttribute(): ?string
+    {
+        if ($this->relationLoaded('consultationSession')) {
+            return $this->consultationSession?->uuid;
+        }
+        return $this->consultationSession()->value('uuid');
     }
 
     // ─── Scopes ─────────────────────────────────────────────────────

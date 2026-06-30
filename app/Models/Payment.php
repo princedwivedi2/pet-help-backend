@@ -22,6 +22,8 @@ class Payment extends Model
         'razorpay_payment_id',
         'razorpay_signature',
         'amount',
+        'token_amount',
+        'balance_due',
         'platform_fee',
         'commission_amount',
         'vet_payout_amount',
@@ -31,6 +33,7 @@ class Payment extends Model
         'currency',
         'failure_reason',
         'paid_at',
+        'balance_collected_at',
         'refunded_at',
         'razorpay_response',
     ];
@@ -39,10 +42,13 @@ class Payment extends Model
     {
         return [
             'amount' => 'integer',
+            'token_amount' => 'integer',
+            'balance_due' => 'integer',
             'platform_fee' => 'integer',
             'commission_amount' => 'integer',
             'vet_payout_amount' => 'integer',
             'paid_at' => 'datetime',
+            'balance_collected_at' => 'datetime',
             'refunded_at' => 'datetime',
             'razorpay_response' => 'array',
         ];

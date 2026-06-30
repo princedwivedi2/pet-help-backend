@@ -327,7 +327,7 @@ class AppointmentService
                 report($e);
             }
 
-            return $appointment->fresh(['user:id,name', 'vetProfile:id,user_id,uuid,clinic_name,vet_name', 'pet:id,name,species']);
+            return $appointment->fresh(['user:id,name', 'vetProfile:id,user_id,uuid,clinic_name,vet_name', 'pet:id,name,species', 'consultationSession:id,appointment_id,uuid']);
         });
     }
 
@@ -340,13 +340,23 @@ class AppointmentService
         int $perPage = 15
     ): LengthAwarePaginator {
         $query = Appointment::forUser($user->id)
-            ->with(['vetProfile:id,user_id,uuid,clinic_name,vet_name,phone', 'pet:id,name,species']);
+            ->with(['vetProfile:id,user_id,uuid,clinic_name,vet_name,phone', 'pet:id,name,species', 'consultationSession:id,appointment_id,uuid']);
 
         if ($status) {
-            if ($status === 'cancelled') {
-                $query->whereIn('status', ['cancelled', 'cancelled_by_user', 'cancelled_by_vet']);
-            } else {
-                $query->byStatus($status);
+            $statuses = array_filter(array_map('trim', explode(',', $status)));
+            $expanded = [];
+            foreach ($statuses as $s) {
+                if ($s === 'cancelled') {
+                    $expanded = array_merge($expanded, ['cancelled', 'cancelled_by_user', 'cancelled_by_vet']);
+                } else {
+                    $expanded[] = $s;
+                }
+            }
+            $expanded = array_values(array_unique($expanded));
+            if (count($expanded) === 1) {
+                $query->where('status', $expanded[0]);
+            } elseif (count($expanded) > 1) {
+                $query->whereIn('status', $expanded);
             }
         }
 
@@ -363,13 +373,23 @@ class AppointmentService
         int $perPage = 15
     ): LengthAwarePaginator {
         $query = Appointment::forVet($vetProfileId)
-            ->with(['user:id,name,email,phone,address,latitude,longitude', 'pet:id,name,species']);
+            ->with(['user:id,name,email,phone,address,latitude,longitude', 'pet:id,name,species', 'consultationSession:id,appointment_id,uuid']);
 
         if ($status) {
-            if ($status === 'cancelled') {
-                $query->whereIn('status', ['cancelled', 'cancelled_by_user', 'cancelled_by_vet']);
-            } else {
-                $query->byStatus($status);
+            $statuses = array_filter(array_map('trim', explode(',', $status)));
+            $expanded = [];
+            foreach ($statuses as $s) {
+                if ($s === 'cancelled') {
+                    $expanded = array_merge($expanded, ['cancelled', 'cancelled_by_user', 'cancelled_by_vet']);
+                } else {
+                    $expanded[] = $s;
+                }
+            }
+            $expanded = array_values(array_unique($expanded));
+            if (count($expanded) === 1) {
+                $query->where('status', $expanded[0]);
+            } elseif (count($expanded) > 1) {
+                $query->whereIn('status', $expanded);
             }
         }
 
@@ -386,7 +406,7 @@ class AppointmentService
     public function findByUuid(string $uuid): ?Appointment
     {
         return Appointment::where('uuid', $uuid)
-            ->with(['user:id,name,email,phone,address,latitude,longitude', 'vetProfile:id,user_id,uuid,clinic_name,vet_name,latitude,longitude,address', 'pet:id,name,species'])
+            ->with(['user:id,name,email,phone,address,latitude,longitude', 'vetProfile:id,user_id,uuid,clinic_name,vet_name,latitude,longitude,address', 'pet:id,name,species', 'consultationSession:id,appointment_id,uuid'])
             ->first();
     }
 
@@ -395,7 +415,7 @@ class AppointmentService
      */
     public function findByReference(string $reference): ?Appointment
     {
-        $query = Appointment::with(['user:id,name,email,phone,address,latitude,longitude', 'vetProfile:id,user_id,uuid,clinic_name,vet_name,latitude,longitude,address', 'pet:id,name,species']);
+        $query = Appointment::with(['user:id,name,email,phone,address,latitude,longitude', 'vetProfile:id,user_id,uuid,clinic_name,vet_name,latitude,longitude,address', 'pet:id,name,species', 'consultationSession:id,appointment_id,uuid']);
 
         if (is_numeric($reference)) {
             return $query->where('id', (int) $reference)
@@ -668,7 +688,7 @@ class AppointmentService
                 report($e);
             }
 
-            return $appointment->fresh(['user:id,name', 'vetProfile:id,user_id,uuid,clinic_name,vet_name', 'pet:id,name,species']);
+            return $appointment->fresh(['user:id,name', 'vetProfile:id,user_id,uuid,clinic_name,vet_name', 'pet:id,name,species', 'consultationSession:id,appointment_id,uuid']);
         });
     }
 

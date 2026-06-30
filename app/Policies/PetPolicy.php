@@ -29,8 +29,8 @@ class PetPolicy
         if ($user->isVet()) {
             $vetProfile = $user->vetProfile;
             if ($vetProfile) {
-                // Check if vet has any appointments with this pet
-                $hasAppointment = $pet->user->appointments()
+                // Check if vet has any appointments for this specific pet
+                $hasAppointment = $pet->appointments()
                     ->where('vet_profile_id', $vetProfile->id)
                     ->exists();
 

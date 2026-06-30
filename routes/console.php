@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\ConsultationNoShowWatchdogJob;
 use App\Services\AppointmentService;
 use App\Services\SosService;
 use Illuminate\Foundation\Inspiring;
@@ -10,6 +11,14 @@ use Illuminate\Support\Facades\Schedule;
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
+
+// Consultation no-show watchdog: auto-refund instant consults where the vet
+// matched but never joined within 10 minutes. Runs every minute (cheap scan).
+Schedule::job(new ConsultationNoShowWatchdogJob())
+    ->everyMinute()
+    ->name('consultations:no-show-watchdog')
+    ->onOneServer()
+    ->withoutOverlapping();
 
 // SOS Escalation: Check every 2 minutes for pending SOS that need escalation
 Schedule::call(function () {

@@ -5,7 +5,10 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\Pet\StorePetMedicalRecordRequest;
 use App\Http\Requests\Api\V1\Pet\UpdatePetMedicalRecordRequest;
+use App\Models\Pet;
 use App\Models\PetMedicalRecord;
+use App\Models\User;
+use App\Models\VetProfile;
 use App\Services\PetMedicalRecordService;
 use App\Services\PetService;
 use App\Traits\ApiResponse;
@@ -22,6 +25,36 @@ class PetMedicalRecordController extends Controller
     ) {}
 
     /**
+     * Find a pet accessible to the given user — either as owner, assigned vet, or admin.
+     * Read-only: write actions still gate through findPetForUser (owner-only).
+     */
+    private function findPetReadable(User $user, int $petId): ?Pet
+    {
+        $pet = $this->petService->findPetForUser($user, $petId);
+        if ($pet) {
+            return $pet;
+        }
+
+        if ($user->isVet()) {
+            $vetProfile = VetProfile::where('user_id', $user->id)->first();
+            if ($vetProfile) {
+                $pet = Pet::find($petId);
+                if ($pet) {
+                    $hasAccess = $pet->appointments()->where('vet_profile_id', $vetProfile->id)->exists()
+                        || $pet->sosRequests()->where('assigned_vet_id', $vetProfile->id)->exists();
+                    return $hasAccess ? $pet : null;
+                }
+            }
+        }
+
+        if ($user->isAdmin()) {
+            return Pet::find($petId);
+        }
+
+        return null;
+    }
+
+    /**
      * List all medical records for a pet.
      * GET /api/v1/pets/{petId}/medical-records
      *
@@ -33,7 +66,7 @@ class PetMedicalRecordController extends Controller
      */
     public function index(Request $request, int $petId): JsonResponse
     {
-        $pet = $this->petService->findPetForUser($request->user(), $petId);
+        $pet = $this->findPetReadable($request->user(), $petId);
 
         if (!$pet) {
             return $this->notFound('Pet not found');
@@ -90,7 +123,7 @@ class PetMedicalRecordController extends Controller
      */
     public function show(Request $request, int $petId, string $uuid): JsonResponse
     {
-        $pet = $this->petService->findPetForUser($request->user(), $petId);
+        $pet = $this->findPetReadable($request->user(), $petId);
 
         if (!$pet) {
             return $this->notFound('Pet not found');

@@ -23,9 +23,18 @@ class PetController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $pets = $this->petService->getUserPets($request->user());
+        $perPage = min((int) ($request->per_page ?? 15), 50);
+        $pets = $request->user()->pets()->orderBy('name')->paginate($perPage);
 
-        return $this->success('Pets retrieved successfully', ['pets' => $pets]);
+        return $this->success('Pets retrieved successfully', [
+            'pets'       => $pets->items(),
+            'pagination' => [
+                'current_page' => $pets->currentPage(),
+                'last_page'    => $pets->lastPage(),
+                'per_page'     => $pets->perPage(),
+                'total'        => $pets->total(),
+            ],
+        ]);
     }
 
     public function store(StorePetRequest $request): JsonResponse

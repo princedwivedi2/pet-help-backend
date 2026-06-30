@@ -52,7 +52,7 @@ class VisitRecordController extends Controller
             $petId = $record->pet_id;
         } else {
             $record = SosRequest::where('uuid', $request->recordable_uuid)->first();
-            if (!$record || $record->vet_profile_id !== $vetProfile->id) {
+            if (!$record || $record->assigned_vet_id !== $vetProfile->id) {
                 return $this->notFound('SOS request not found or not yours.');
             }
             $petId = $record->pet_id;
@@ -209,7 +209,14 @@ class VisitRecordController extends Controller
         }
 
         $user = auth()->user();
-        if ($appointment->user_id !== $user->id && !$user->isVet() && !$user->isAdmin()) {
+        $isOwner = $appointment->user_id === $user->id;
+        $isAdmin = $user->isAdmin();
+        $isAssignedVet = false;
+        if ($user->isVet()) {
+            $vetProfile = VetProfile::where('user_id', $user->id)->first();
+            $isAssignedVet = $vetProfile && $appointment->vet_profile_id === $vetProfile->id;
+        }
+        if (!$isOwner && !$isAdmin && !$isAssignedVet) {
             return $this->forbidden('Access denied');
         }
 
@@ -234,7 +241,14 @@ class VisitRecordController extends Controller
         }
 
         $user = auth()->user();
-        if ($sos->user_id !== $user->id && !$user->isVet() && !$user->isAdmin()) {
+        $isOwner = $sos->user_id === $user->id;
+        $isAdmin = $user->isAdmin();
+        $isAssignedVet = false;
+        if ($user->isVet()) {
+            $vetProfile = VetProfile::where('user_id', $user->id)->first();
+            $isAssignedVet = $vetProfile && $sos->assigned_vet_id === $vetProfile->id;
+        }
+        if (!$isOwner && !$isAdmin && !$isAssignedVet) {
             return $this->forbidden('Access denied');
         }
 

@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "ab494fa649ac0d5227577b8f0065434e",
+    "content-hash": "afe118ba67316f9f45123d0e30a71ab1",
     "packages": [
         {
             "name": "beste/clock",
@@ -1276,6 +1276,64 @@
                 "source": "https://github.com/googleapis/google-cloud-php-core/tree/v1.72.0"
             },
             "time": "2026-04-09T21:01:46+00:00"
+        },
+        {
+            "name": "google/cloud-firestore",
+            "version": "v2.1.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/googleapis/google-cloud-php-firestore.git",
+                "reference": "029dba99b9c8cdb3dc64e3e8f0e6351d9883bdf7"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/googleapis/google-cloud-php-firestore/zipball/029dba99b9c8cdb3dc64e3e8f0e6351d9883bdf7",
+                "reference": "029dba99b9c8cdb3dc64e3e8f0e6351d9883bdf7",
+                "shasum": ""
+            },
+            "require": {
+                "ext-grpc": "*",
+                "google/cloud-core": "^1.68.2",
+                "google/gax": "^1.38.0",
+                "php": "^8.1",
+                "ramsey/uuid": "^3.0|^4.0"
+            },
+            "require-dev": {
+                "dg/bypass-finals": "^1.9",
+                "erusev/parsedown": "^1.6",
+                "phpdocumentor/reflection": "^5.3.3||^6.0",
+                "phpdocumentor/reflection-docblock": "^5.3.3||^6.0",
+                "phpspec/prophecy-phpunit": "^2.0",
+                "phpunit/phpunit": "^9.0",
+                "squizlabs/php_codesniffer": "2.*"
+            },
+            "suggest": {
+                "ext-protobuf": "Provides a significant increase in throughput over the pure PHP protobuf implementation. See https://cloud.google.com/php/grpc for installation instructions."
+            },
+            "type": "library",
+            "extra": {
+                "component": {
+                    "id": "cloud-firestore",
+                    "path": "Firestore",
+                    "entry": "src/FirestoreClient.php",
+                    "target": "googleapis/google-cloud-php-firestore.git"
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Google\\Cloud\\Firestore\\": "src",
+                    "GPBMetadata\\Google\\Firestore\\": "metadata"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "Apache-2.0"
+            ],
+            "description": "Cloud Firestore Client for PHP",
+            "support": {
+                "source": "https://github.com/googleapis/google-cloud-php-firestore/tree/v2.1.0"
+            },
+            "time": "2026-04-28T15:44:32+00:00"
         },
         {
             "name": "google/cloud-storage",
@@ -4198,6 +4256,62 @@
                 "source": "https://github.com/paragonie/sodium_compat/tree/v2.5.0"
             },
             "time": "2025-12-30T16:12:18+00:00"
+        },
+        {
+            "name": "peterujah/php-agora-tokens",
+            "version": "1.1.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/peterujah/php-agora-tokens.git",
+                "reference": "4feeb4538601606aa4cb0ead420923535ceb64ff"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/peterujah/php-agora-tokens/zipball/4feeb4538601606aa4cb0ead420923535ceb64ff",
+                "reference": "4feeb4538601606aa4cb0ead420923535ceb64ff",
+                "shasum": ""
+            },
+            "require": {
+                "ext-mbstring": "*",
+                "php": "^7.0 || ^8.0"
+            },
+            "type": "library",
+            "extra": {
+                "branch-alias": {
+                    "dev-master": "1.2-dev"
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Peterujah\\Agora\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Ujah Chigozie",
+                    "email": "ujahchigozie@gmail.com"
+                }
+            ],
+            "description": "This package is a Composer-friendly rewrite of Agora,s PHP token generator.",
+            "keywords": [
+                "agora",
+                "agora WebRTC ",
+                "agora live-streaming",
+                "agora rtc",
+                "agora rtm",
+                "agora-tokens",
+                "php",
+                "php agora"
+            ],
+            "support": {
+                "issues": "https://github.com/peterujah/php-agora-tokens/issues",
+                "source": "https://github.com/peterujah/php-agora-tokens/tree/1.1.0"
+            },
+            "time": "2025-05-16T01:12:09+00:00"
         },
         {
             "name": "phpoption/phpoption",

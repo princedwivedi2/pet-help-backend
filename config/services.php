@@ -45,9 +45,30 @@ return [
         'server_key' => env('FCM_SERVER_KEY', ''),
     ],
 
+    'firebase' => [
+        // Chat realtime fan-out backend.
+        //   'realtime'  - Firebase Realtime Database (default; works without ext-grpc)
+        //   'firestore' - Cloud Firestore (richer query/security; REQUIRES ext-grpc on the host)
+        // Source of truth stays in MySQL regardless — this only controls the
+        // realtime push side-effect.
+        'chat_backend' => env('FIREBASE_CHAT_BACKEND', 'realtime'),
+    ],
+
     'openai' => [
         'key'   => env('OPENAI_API_KEY', ''),
         'model' => env('OPENAI_MODEL', 'gpt-4o-mini'),
+    ],
+
+    'agora' => [
+        'app_id'          => env('AGORA_APP_ID', ''),
+        'app_certificate' => env('AGORA_APP_CERTIFICATE', ''),
+    ],
+
+    'payments' => [
+        // Set PAYMENTS_MOCK=true to skip all Razorpay API calls during development/testing.
+        // The mock-confirm endpoint becomes active; the real /payments/verify path still works.
+        // NEVER set true in production — the mock-confirm endpoint enforces this.
+        'mock' => env('PAYMENTS_MOCK', false),
     ],
 
 ];
