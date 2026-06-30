@@ -416,6 +416,36 @@ class PaymentService
         } elseif ($payment->payable_type === 'sos_request' || $payment->payable_type === \App\Models\SosRequest::class) {
             \App\Models\SosRequest::where('id', $payment->payable_id)
                 ->update(['emergency_charge' => $payment->amount]);
+        } elseif ($payment->payable_type === 'consultation') {
+            // Link the payment row back to the consultation session so the join gate
+            // (which checks session->payment_id) passes after webhook capture.
+            // Idempotent: only writes when payment_id is not yet set.
+            \App\Models\ConsultationSession::where('id', $payment->payable_id)
+                ->whereNull('payment_id')
+                ->update(['payment_id' => $payment->id]);
+        } elseif ($payment->payable_type === 'subscription') {
+            // Idempotent: only create the Subscription row if one doesn't exist yet.
+            // This handles the webhook path (verifySubscriptionPayment handles the client path).
+            $alreadyActive = Subscription::where('payment_id', $payment->id)->exists();
+            if (!$alreadyActive) {
+                $plan = SubscriptionPlan::find($payment->payable_id);
+                if ($plan) {
+                    Subscription::create([
+                        'user_id'              => $payment->user_id,
+                        'subscription_plan_id' => $plan->id,
+                        'payment_id'           => $payment->id,
+                        'status'               => 'active',
+                        'starts_at'            => now(),
+                        'ends_at'              => now()->addDays($plan->duration_days),
+                    ]);
+
+                    Log::info('Subscription activated via webhook', [
+                        'payment_uuid' => $payment->uuid,
+                        'user_id'      => $payment->user_id,
+                        'plan_uuid'    => $plan->uuid,
+                    ]);
+                }
+            }
         }
     }
 
@@ -480,21 +510,91 @@ class PaymentService
     }
 
     /**
+     * Returns true when the PAYMENTS_MOCK env flag is explicitly set.
+     * This is the authoritative check for "dev bypass" mode — it is distinct from
+     * the implicit mock (missing keys) so the two can evolve independently.
+     */
+    public function isForcedMock(): bool
+    {
+        return (bool) config('services.payments.mock', false);
+    }
+
+    /**
      * Check if running in mock mode (no real payment processing).
+     * True when explicitly forced via PAYMENTS_MOCK=true OR when Razorpay is not
+     * fully configured (empty/test keys in non-production environments).
      */
     public function isMockMode(): bool
     {
-        return empty($this->razorpayKeyId)
+        return $this->isForcedMock()
+            || empty($this->razorpayKeyId)
             || empty($this->razorpayKeySecret)
             || (config('app.env') !== 'production' && str_starts_with($this->razorpayKeyId, 'rzp_test'));
+    }
+
+    /**
+     * Confirm a mock payment — marks the Payment row as paid and runs the identical
+     * post-capture side-effects as a real Razorpay capture (vet wallet credit,
+     * payable status update, audit log). Idempotent: already-paid rows are returned
+     * as-is without re-running side-effects.
+     *
+     * Only callable when isForcedMock() is true. The controller enforces this guard;
+     * this method throws if somehow called in non-mock mode as a second line of defence.
+     */
+    public function confirmMockPayment(Payment $payment): Payment
+    {
+        if (!$this->isForcedMock()) {
+            throw new \RuntimeException('Mock payment confirm is disabled (PAYMENTS_MOCK is not set).');
+        }
+
+        return DB::transaction(function () use ($payment) {
+            $locked = Payment::where('id', $payment->id)->lockForUpdate()->first();
+
+            // Idempotent — return early if already captured.
+            if ($locked->isPaid()) {
+                return $locked;
+            }
+
+            $mockPaymentId = 'mock_pay_' . \Illuminate\Support\Str::uuid();
+
+            $locked->update([
+                'razorpay_payment_id' => $mockPaymentId,
+                'payment_status'      => 'paid',
+                'paid_at'             => now(),
+            ]);
+
+            if ($locked->vet_profile_id && $locked->vet_payout_amount > 0) {
+                $this->creditVetWallet($locked);
+            }
+            $this->updatePayableStatus($locked);
+
+            $this->auditService->log(
+                $locked->user_id,
+                Payment::class,
+                $locked->id,
+                'mock_payment_confirmed',
+                null,
+                ['mock_payment_id' => $mockPaymentId, 'amount' => $locked->amount],
+                'Payment confirmed via mock (dev/test mode)'
+            );
+
+            Log::info('Mock payment confirmed', [
+                'payment_uuid'    => $locked->uuid,
+                'mock_payment_id' => $mockPaymentId,
+                'amount'          => $locked->amount,
+            ]);
+
+            return $locked->fresh();
+        });
     }
 
     private function createRazorpayOrder(int $amount, string $currency): array
     {
         $this->assertNotTestKeysInProduction();
 
-        if (!$this->isConfigured()) {
-            // SECURITY: Block mock orders in production environment
+        // Honour explicit mock flag first, then fall back to implicit (missing keys) check.
+        if ($this->isMockMode()) {
+            // Never allow mock order creation in production regardless of flag.
             if (config('app.env') === 'production') {
                 Log::critical('Payment gateway not configured in production!', [
                     'amount' => $amount,
@@ -512,11 +612,11 @@ class PaymentService
             ]);
 
             return [
-                'id' => 'order_mock_' . uniqid(),
-                'amount' => $amount,
+                'id'       => 'order_mock_' . \Illuminate\Support\Str::uuid(),
+                'amount'   => $amount,
                 'currency' => $currency,
-                'status' => 'created',
-                '_mock' => true, // Flag for frontend/testing
+                'status'   => 'created',
+                '_mock'    => true,
             ];
         }
 

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Appointment;
+use App\Models\ConsultationSession;
 use App\Models\Payment;
 use App\Models\SosRequest;
 use App\Models\VetProfile;
@@ -30,14 +31,14 @@ class PaymentController extends Controller
     public function createOrder(Request $request): JsonResponse
     {
         $request->validate([
-            'payable_type' => 'required|in:appointment,sos',
-            'payable_uuid' => 'required|string',
+            'payable_type'  => 'required|in:appointment,sos,consultation',
+            'payable_uuid'  => 'required|string',
             'payment_model' => 'nullable|in:platform_fee,full_payment',
         ]);
 
         $user = $request->user();
 
-        // Resolve the payable entity
+        // Resolve the payable entity and derive amount + vet
         if ($request->payable_type === 'appointment') {
             $payable = Appointment::where('uuid', $request->payable_uuid)->first();
             if (!$payable) {
@@ -55,6 +56,22 @@ class PaymentController extends Controller
             } else {
                 $amount = 500;
             }
+            $vetProfileId = $payable->vet_profile_id;
+            $payableType  = 'appointment';
+        } elseif ($request->payable_type === 'consultation') {
+            $payable = ConsultationSession::where('uuid', $request->payable_uuid)->first();
+            if (!$payable) {
+                return $this->notFound('Consultation not found');
+            }
+            if ($payable->user_id !== $user->id) {
+                return $this->forbidden('You can only pay for your own consultations.');
+            }
+            if (!$payable->fee_amount) {
+                return $this->error('No fee has been set for this consultation.', null, 422);
+            }
+            $amount       = $payable->fee_amount;
+            $vetProfileId = $payable->vet_profile_id;
+            $payableType  = 'consultation';
         } else {
             $payable = SosRequest::where('uuid', $request->payable_uuid)->first();
             if (!$payable) {
@@ -63,18 +80,16 @@ class PaymentController extends Controller
             if ($payable->user_id !== $user->id) {
                 return $this->forbidden('You can only pay for your own SOS requests.');
             }
-            $amount = $payable->emergency_charge ?? 1000;
+            $amount       = $payable->emergency_charge ?? 1000;
+            $vetProfileId = $payable->assigned_vet_id;
+            $payableType  = 'sos_request';
         }
 
         try {
-            $vetProfileId = $request->payable_type === 'appointment'
-                ? $payable->vet_profile_id
-                : $payable->assigned_vet_id;
-
             $result = $this->paymentService->createOrder(
                 userId: $user->id,
                 vetProfileId: $vetProfileId,
-                payableType: $request->payable_type === 'appointment' ? 'appointment' : 'sos_request',
+                payableType: $payableType,
                 payableId: $payable->id,
                 amount: $amount,
                 paymentModel: $request->payment_model ?? 'platform_fee'
@@ -397,7 +412,11 @@ class PaymentController extends Controller
             throw $e;
         }
 
-        if ($event === 'payment.captured') {
+        // Both events carry the same nested path to the payment entity.
+        // payment.captured — fires for manual-capture flows.
+        // order.paid       — fires for auto-capture (default Razorpay checkout behaviour).
+        // Handling both ensures server-side reconciliation regardless of capture mode.
+        if (in_array($event, ['payment.captured', 'order.paid'], true)) {
             $razorpayOrderId   = $payload['payload']['payment']['entity']['order_id'] ?? null;
             $razorpayPaymentId = $payload['payload']['payment']['entity']['id'] ?? null;
 
@@ -463,5 +482,52 @@ class PaymentController extends Controller
             'wallet' => $wallet,
             'transactions' => $transactions,
         ]);
+    }
+
+    /**
+     * Confirm a mock payment (dev/test only).
+     * POST /api/v1/payments/mock-confirm
+     *
+     * Requires PAYMENTS_MOCK=true in .env. Returns 404 when the flag is off so the
+     * endpoint is invisible in production. Runs the same side-effects as a real
+     * Razorpay capture: marks the payment row paid, credits the vet wallet, and
+     * calls updatePayableStatus (appointment / consultation / subscription / SOS).
+     * Idempotent — replaying with an already-paid payment_uuid is safe.
+     *
+     * Request:  { "payment_uuid": "<uuid>" }
+     * Response: { "success": true, "message": "Payment confirmed", "data": { "payment": {...} } }
+     */
+    public function mockConfirm(Request $request): JsonResponse
+    {
+        // Invisible in production / when flag is off — looks like any other 404.
+        if (!$this->paymentService->isForcedMock()) {
+            return $this->notFound('Not found');
+        }
+
+        // Extra production safety — belt-and-suspenders against a misconfigured deploy.
+        if (config('app.env') === 'production') {
+            return $this->notFound('Not found');
+        }
+
+        $request->validate([
+            'payment_uuid' => 'required|string',
+        ]);
+
+        $user    = $request->user();
+        $payment = Payment::where('uuid', $request->payment_uuid)
+            ->where('user_id', $user->id)
+            ->first();
+
+        if (!$payment) {
+            return $this->notFound('Payment not found');
+        }
+
+        try {
+            $payment = $this->paymentService->confirmMockPayment($payment);
+
+            return $this->success('Payment confirmed', ['payment' => $payment]);
+        } catch (\DomainException $e) {
+            return $this->error($e->getMessage(), null, 422);
+        }
     }
 }

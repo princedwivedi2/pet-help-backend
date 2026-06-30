@@ -11,6 +11,10 @@ use App\Services\ConsultationService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Peterujah\Agora\Agora;
+use Peterujah\Agora\Builders\RtcToken;
+use Peterujah\Agora\Roles;
+use Peterujah\Agora\User as AgoraUser;
 
 class ConsultationController extends Controller
 {
@@ -104,7 +108,13 @@ class ConsultationController extends Controller
 
         if ($user->isVet()) {
             $vetProfile = VetProfile::where('user_id', $user->id)->first();
-            $query->where('vet_profile_id', $vetProfile?->id);
+            if (!$vetProfile) {
+                return $this->success('Consultations retrieved', [
+                    'consultations' => [],
+                    'pagination' => ['current_page' => 1, 'last_page' => 1, 'per_page' => $perPage, 'total' => 0],
+                ]);
+            }
+            $query->where('vet_profile_id', $vetProfile->id);
         } else {
             $query->where('user_id', $user->id);
         }
@@ -196,27 +206,39 @@ class ConsultationController extends Controller
     }
 
     /**
-     * POST /api/v1/consultations/{uuid}/complete   (vet ends + writes notes)
+     * POST /api/v1/consultations/{uuid}/complete
+     * Either participant (user or vet) may end the call.
+     * Vet-supplied clinical fields (notes, diagnosis, prescription) are accepted
+     * but not required — the user side simply sends no body.
      */
     public function complete(Request $request, string $uuid): JsonResponse
     {
         $data = $request->validate([
-            'vet_notes' => 'nullable|string|max:5000',
-            'diagnosis' => 'nullable|string|max:2000',
+            'vet_notes'    => 'nullable|string|max:5000',
+            'diagnosis'    => 'nullable|string|max:2000',
             'prescription' => 'nullable|string|max:5000',
         ]);
 
         $session = ConsultationSession::where('uuid', $uuid)->first();
         if (!$session) return $this->notFound('Consultation not found');
 
-        $user = $request->user();
-        $vetProfile = VetProfile::where('user_id', $user->id)->first();
-        if (!$vetProfile || $session->vet_profile_id !== $vetProfile->id) {
-            return $this->forbidden('Only the assigned vet can complete this consultation.');
+        $user       = $request->user();
+        $isOwner    = $user->id === $session->user_id;
+        $isVet      = false;
+        if ($user->isVet()) {
+            $vetProfile = VetProfile::where('user_id', $user->id)->first();
+            $isVet = $vetProfile && $session->vet_profile_id === $vetProfile->id;
+        }
+
+        if (!$isOwner && !$isVet) {
+            return $this->forbidden('Only a participant of this consultation can complete it.');
         }
 
         $session = $this->consultationService->complete(
-            $session, $data['vet_notes'] ?? null, $data['diagnosis'] ?? null, $data['prescription'] ?? null
+            $session,
+            $data['vet_notes']    ?? null,
+            $data['diagnosis']    ?? null,
+            $data['prescription'] ?? null,
         );
 
         return $this->success('Consultation completed', ['consultation' => $session]);
@@ -283,5 +305,58 @@ class ConsultationController extends Controller
             return $vetProfile && $session->vet_profile_id === $vetProfile->id;
         }
         return false;
+    }
+
+    /**
+     * GET /api/v1/consultations/{uuid}/rtc-token
+     * Generate an Agora RTC token for a consultation participant (user OR vet).
+     *
+     * Both the pet owner (patient side) and the assigned vet may request a token.
+     * Each receives their own user_id as uid so Agora can distinguish the streams.
+     * Returns 403 for completed sessions or callers not in this consultation.
+     */
+    public function rtcToken(Request $request, ConsultationSession $consultation): JsonResponse
+    {
+        $user = $request->user();
+
+        // Determine whether the caller is the patient or the assigned vet.
+        $isOwner = $user->id === $consultation->user_id;
+        $isAssignedVet = false;
+        if ($user->isVet()) {
+            $vetProfile = VetProfile::where('user_id', $user->id)->first();
+            $isAssignedVet = $vetProfile && $consultation->vet_profile_id === $vetProfile->id;
+        }
+
+        if (!$isOwner && !$isAssignedVet) {
+            return $this->forbidden('Unauthorized');
+        }
+
+        if ($consultation->status === 'completed') {
+            return $this->forbidden('Unauthorized');
+        }
+
+        $ttl     = 3600; // 1 hour
+        $channel = 'consultation_' . str_replace('-', '', $consultation->uuid);
+        $uid     = $user->id;
+
+        $client = new Agora(
+            config('services.agora.app_id'),
+            config('services.agora.app_certificate'),
+        );
+        $client->setExpiration($ttl);
+
+        $agoraUser = (new AgoraUser($uid))
+            ->setPrivilegeExpire($ttl)
+            ->setChannel($channel)
+            ->setRole(Roles::RTC_PUBLISHER);
+
+        $token = RtcToken::buildTokenWithUid($client, $agoraUser);
+
+        return $this->success('Token generated', [
+            'token'      => $token,
+            'uid'        => $uid,
+            'channel'    => $channel,
+            'expires_at' => now()->addSeconds($ttl)->toIso8601String(),
+        ]);
     }
 }

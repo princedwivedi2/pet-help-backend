@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Models\SosRequest;
+use App\Notifications\Channels\FcmChannel;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Notification;
 
@@ -15,30 +16,14 @@ class SosAlertNotification extends Notification
         private bool $isEscalation = false
     ) {}
 
-    /**
-     * Delivery channels.
-     *
-     * Currently: database only (in-app notifications).
-     * TODO: Add Laravel Broadcasting for real-time WebSocket push.
-     * TODO: Add FCM for mobile push notifications.
-     *
-     * @return array<string>
-     */
     public function via(object $notifiable): array
     {
-        // For now: database only
-        // Future: return ['database', 'broadcast', FcmChannel::class];
-        return ['database'];
+        return ['database', FcmChannel::class];
     }
 
-    /**
-     * Data stored in the notifications table.
-     *
-     * @return array<string, mixed>
-     */
     public function toArray(object $notifiable): array
     {
-        $title = $this->isEscalation 
+        $title = $this->isEscalation
             ? '🚨 URGENT: Escalated SOS - No vet has responded!'
             : '🚨 New SOS Emergency Request';
 
@@ -62,9 +47,29 @@ class SosAlertNotification extends Notification
         ];
     }
 
-    /**
-     * Calculate urgency based on time elapsed and emergency type.
-     */
+    public function toFcm(object $notifiable): array
+    {
+        $title = $this->isEscalation
+            ? 'URGENT: Escalated SOS'
+            : 'New SOS Emergency Request';
+
+        $petName = $this->sosRequest->pet?->name;
+        $body = $petName
+            ? "Emergency for {$petName}: {$this->sosRequest->emergency_type}"
+            : "Emergency: {$this->sosRequest->emergency_type}";
+
+        return [
+            'title' => $title,
+            'body'  => $body,
+            'data'  => [
+                'type'           => 'sos_alert',
+                'sos_uuid'       => $this->sosRequest->uuid,
+                'emergency_type' => $this->sosRequest->emergency_type,
+                'is_escalation'  => $this->isEscalation ? 'true' : 'false',
+            ],
+        ];
+    }
+
     private function calculateUrgency(): string
     {
         $minutesElapsed = $this->sosRequest->created_at?->diffInMinutes(now()) ?? 0;

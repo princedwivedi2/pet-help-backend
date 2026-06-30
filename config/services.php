@@ -59,4 +59,16 @@ return [
         'model' => env('OPENAI_MODEL', 'gpt-4o-mini'),
     ],
 
+    'agora' => [
+        'app_id'          => env('AGORA_APP_ID', ''),
+        'app_certificate' => env('AGORA_APP_CERTIFICATE', ''),
+    ],
+
+    'payments' => [
+        // Set PAYMENTS_MOCK=true to skip all Razorpay API calls during development/testing.
+        // The mock-confirm endpoint becomes active; the real /payments/verify path still works.
+        // NEVER set true in production — the mock-confirm endpoint enforces this.
+        'mock' => env('PAYMENTS_MOCK', false),
+    ],
+
 ];

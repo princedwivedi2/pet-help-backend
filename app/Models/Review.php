@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
+use App\Models\ConsultationSession;
 
 class Review extends Model
 {
@@ -17,6 +18,7 @@ class Review extends Model
         'vet_profile_id',
         'appointment_id',
         'sos_request_id',
+        'consultation_session_id',
         'rating',
         'comment',
         'vet_reply',
@@ -75,6 +77,11 @@ class Review extends Model
     public function sosRequest(): BelongsTo
     {
         return $this->belongsTo(SosRequest::class);
+    }
+
+    public function consultationSession(): BelongsTo
+    {
+        return $this->belongsTo(ConsultationSession::class);
     }
 
     public function scopeForVet($query, int $vetProfileId)

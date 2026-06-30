@@ -222,6 +222,7 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::get('/', [PaymentController::class, 'index']);
         Route::post('/create-order', [PaymentController::class, 'createOrder']);
         Route::post('/verify', [PaymentController::class, 'verify']);
+        Route::post('/mock-confirm', [PaymentController::class, 'mockConfirm']); // dev only — 404 when PAYMENTS_MOCK=false
         Route::post('/offline', [PaymentController::class, 'recordOffline']);
         Route::get('/wallet', [PaymentController::class, 'wallet']);
         Route::get('/{uuid}', [PaymentController::class, 'show']);
@@ -230,8 +231,9 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
 
     // Reviews - rate limited
     Route::middleware('throttle:10,1')->prefix('reviews')->group(function () {
+        Route::get('/', [ReviewController::class, 'index']);
         Route::post('/', [ReviewController::class, 'store']);
-        Route::put('/{uuid}/reply', [ReviewController::class, 'reply']);
+        Route::put('/{uuid}/reply', [ReviewController::class, 'reply'])->middleware('role:vet');
         Route::put('/{uuid}/flag', [ReviewController::class, 'flag']);
     });
 
@@ -310,6 +312,7 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::post('/{uuid}/cancel', [ConsultationController::class, 'vetCancel']);     // vet
         Route::get('/{uuid}/messages', [ConsultationController::class, 'messages']);
         Route::post('/{uuid}/messages', [ConsultationController::class, 'postMessage']);
+        Route::get('/{consultation:uuid}/rtc-token', [ConsultationController::class, 'rtcToken']); // vet
     });
 });
 

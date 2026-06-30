@@ -18,6 +18,7 @@
 /public/storage
 /storage/*.key
 /storage/firebase
+/storage/app/firebase-credentials.json
 /storage/pail
 /vendor
 Homestead.json

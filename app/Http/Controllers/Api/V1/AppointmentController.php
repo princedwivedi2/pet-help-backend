@@ -84,6 +84,21 @@ class AppointmentController extends Controller
     {
         $user = $request->user();
 
+        $request->validate([
+            'status' => ['nullable', 'string', 'regex:/^[a-z_,]+$/'],
+            'date'   => ['nullable', 'date_format:Y-m-d'],
+        ]);
+
+        $allowedStatuses = ['pending', 'accepted', 'confirmed', 'in_progress', 'completed', 'cancelled', 'cancelled_by_user', 'cancelled_by_vet', 'rejected', 'no_show'];
+
+        if ($request->status) {
+            $requested = array_filter(array_map('trim', explode(',', $request->status)));
+            $invalid = array_diff($requested, $allowedStatuses);
+            if (!empty($invalid)) {
+                return $this->error('Invalid status value(s): ' . implode(', ', $invalid), null, 422);
+            }
+        }
+
         $result = $this->gateVetAppointmentAccess($user);
         if ($result instanceof JsonResponse) {
             return $result;

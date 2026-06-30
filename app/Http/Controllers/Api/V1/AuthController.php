@@ -139,8 +139,9 @@ class AuthController extends Controller
     {
         $user = $request->user();
 
-        // Clear FCM token on logout so the device no longer receives push notifications
+        // Clear FCM token and deactivate all device token rows so pushes stop immediately
         $user->update(['fcm_token' => null]);
+        $user->deviceTokens()->update(['is_active' => false]);
 
         $currentToken = $user->currentAccessToken();
 
