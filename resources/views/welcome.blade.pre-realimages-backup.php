@@ -20,30 +20,12 @@
     @verbatim
     <style>
       html { scroll-behavior: smooth; }
-      :root { --grid: rgba(36,32,29,0.08); }
       body { font-family: 'Sora', sans-serif;
-        background: radial-gradient(circle at 20% 10%, #fff8ef 0%, #f7f3ed 35%, #efe7dd 100%);
+        background: radial-gradient(circle at 18% 8%, #fff8ef 0%, #f7f3ed 34%, #efe7dd 100%);
         color: #161412; overflow-x: hidden; -webkit-font-smoothing: antialiased; }
       .font-display { font-family: 'Cormorant Garamond', serif; }
       section[id] { scroll-margin-top: 5rem; }
       ::selection { background: rgba(184,111,63,.22); }
-
-      /* Restored original page background: drifting warm mesh + faint masked grid, behind all content */
-      .page-bg { position:fixed; inset:0; z-index:-1; pointer-events:none; overflow:hidden; }
-      .page-bg .mesh { position:absolute; inset:-8%;
-        background:
-          radial-gradient(circle at 8% 18%, rgba(184,111,63,.22), transparent 30%),
-          radial-gradient(circle at 86% 10%, rgba(79,105,87,.2), transparent 32%),
-          radial-gradient(circle at 70% 80%, rgba(216,157,98,.2), transparent 40%);
-        animation: mesh-drift 16s ease-in-out infinite alternate; }
-      .page-bg .grid-overlay { position:absolute; inset:0;
-        background-image:
-          linear-gradient(to right, var(--grid) 1px, transparent 1px),
-          linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
-        background-size:48px 48px;
-        -webkit-mask-image: radial-gradient(circle at center, black 35%, transparent 85%);
-        mask-image: radial-gradient(circle at center, black 35%, transparent 85%); }
-      @keyframes mesh-drift { 0%{transform:translate3d(0,0,0) scale(1);} 100%{transform:translate3d(-2%,2%,0) scale(1.08);} }
 
       #scroll-bar { position:fixed; top:0; left:0; height:2px; width:0%; z-index:9999;
         background:linear-gradient(90deg,#b86f3f,#d89d62,#4f6957); transition:width .08s linear; }
@@ -151,12 +133,6 @@
 </head>
 <body class="font-body text-ink antialiased">
 
-<!-- Original page background: warm drifting mesh + faint grid, fixed behind everything -->
-<div class="page-bg" aria-hidden="true">
-  <div class="mesh"></div>
-  <div class="grid-overlay"></div>
-</div>
-
 <div id="scroll-bar"></div>
 
 <!-- ============ NAV ============ -->
@@ -237,8 +213,7 @@
 
     <div class="reveal">
       <div class="hero-frame">
-        <!-- Real Unsplash photo. To localize for production: curl into public/images/hero-dog.jpg and switch src back to {{ asset('images/hero-dog.jpg') }} -->
-        <img src="https://images.unsplash.com/photo-1450778869180-41d0601e046e?auto=format&fit=crop&w=1200&q=80" alt="A calm dog looking into the camera"
+        <img src="{{ asset('images/hero-dog.jpg') }}" alt="A calm dog looking into the camera"
              loading="eager" class="w-full h-[420px] md:h-[520px] object-cover rounded-[2rem] shadow-soft">
         <div class="absolute z-10 -bottom-6 -left-4 sm:-left-6 bg-cream border border-fog rounded-2xl shadow-soft px-5 py-4 flex items-center gap-3">
           <span class="h-11 w-11 rounded-full bg-moss/15 flex items-center justify-center text-moss">
@@ -349,8 +324,7 @@
     <div class="grid lg:grid-cols-2 gap-14 lg:gap-20 items-center">
       <div class="reveal order-2 lg:order-1">
         <div class="hero-frame">
-          <!-- Real Unsplash photo. Localize later: curl into public/images/emergency-vet.jpg and switch src back to {{ asset('images/emergency-vet.jpg') }} -->
-          <img src="https://images.unsplash.com/photo-1576201836106-db1758fd1c97?auto=format&fit=crop&w=1200&q=80" alt="A vet gently examining a dog" loading="lazy"
+          <img src="{{ asset('images/emergency-vet.jpg') }}" alt="A vet gently examining a dog" loading="lazy"
                class="w-full h-[340px] object-cover rounded-[2rem] shadow-soft">
         </div>
       </div>
@@ -498,8 +472,7 @@
     </div>
     <div class="reveal">
       <div class="relative">
-        <!-- Real Unsplash photo. Localize later: curl into public/images/vet-with-dog.jpg and switch src back to {{ asset('images/vet-with-dog.jpg') }} -->
-        <img src="https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&w=1200&q=80" alt="A veterinarian with a happy dog" loading="lazy"
+        <img src="{{ asset('images/vet-with-dog.jpg') }}" alt="A veterinarian with a happy dog" loading="lazy"
              class="w-full h-[440px] object-cover rounded-[2rem] shadow-soft">
         <div class="absolute -bottom-6 -right-4 sm:-right-6 bg-cream text-ink rounded-2xl shadow-soft px-5 py-4">
           <p class="font-display text-2xl font-semibold text-moss leading-none">Your hours</p>
