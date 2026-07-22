@@ -20,30 +20,12 @@
     @verbatim
     <style>
       html { scroll-behavior: smooth; }
-      :root { --grid: rgba(36,32,29,0.08); }
       body { font-family: 'Sora', sans-serif;
-        background: radial-gradient(circle at 20% 10%, #fff8ef 0%, #f7f3ed 35%, #efe7dd 100%);
+        background: radial-gradient(circle at 18% 8%, #fff8ef 0%, #f7f3ed 34%, #efe7dd 100%);
         color: #161412; overflow-x: hidden; -webkit-font-smoothing: antialiased; }
       .font-display { font-family: 'Cormorant Garamond', serif; }
       section[id] { scroll-margin-top: 5rem; }
       ::selection { background: rgba(184,111,63,.22); }
-
-      /* Restored original page background: drifting warm mesh + faint masked grid, behind all content */
-      .page-bg { position:fixed; inset:0; z-index:-1; pointer-events:none; overflow:hidden; }
-      .page-bg .mesh { position:absolute; inset:-8%;
-        background:
-          radial-gradient(circle at 8% 18%, rgba(184,111,63,.22), transparent 30%),
-          radial-gradient(circle at 86% 10%, rgba(79,105,87,.2), transparent 32%),
-          radial-gradient(circle at 70% 80%, rgba(216,157,98,.2), transparent 40%);
-        animation: mesh-drift 16s ease-in-out infinite alternate; }
-      .page-bg .grid-overlay { position:absolute; inset:0;
-        background-image:
-          linear-gradient(to right, var(--grid) 1px, transparent 1px),
-          linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
-        background-size:48px 48px;
-        -webkit-mask-image: radial-gradient(circle at center, black 35%, transparent 85%);
-        mask-image: radial-gradient(circle at center, black 35%, transparent 85%); }
-      @keyframes mesh-drift { 0%{transform:translate3d(0,0,0) scale(1);} 100%{transform:translate3d(-2%,2%,0) scale(1.08);} }
 
       #scroll-bar { position:fixed; top:0; left:0; height:2px; width:0%; z-index:9999;
         background:linear-gradient(90deg,#b86f3f,#d89d62,#4f6957); transition:width .08s linear; }
@@ -150,12 +132,6 @@
     @endverbatim
 </head>
 <body class="font-body text-ink antialiased">
-
-<!-- Original page background: warm drifting mesh + faint grid, fixed behind everything -->
-<div class="page-bg" aria-hidden="true">
-  <div class="mesh"></div>
-  <div class="grid-overlay"></div>
-</div>
 
 <div id="scroll-bar"></div>
 
@@ -720,23 +696,3 @@
   backTop.addEventListener('click', function(){ window.scrollTo({ top:0, behavior: reduce ? 'auto' : 'smooth' }); });
 
   var form = document.getElementById('waitlist-form');
-  form.addEventListener('submit', function(e){
-    e.preventDefault();
-    document.getElementById('wl-msg').classList.remove('hidden');
-    form.reset();
-  });
-
-  var reveals = Array.prototype.slice.call(document.querySelectorAll('.reveal'));
-  if (reduce || !('IntersectionObserver' in window)) {
-    reveals.forEach(function(el){ el.classList.add('show'); });
-  } else {
-    var io = new IntersectionObserver(function(entries){
-      entries.forEach(function(en){ if (en.isIntersecting){ en.target.classList.add('show'); io.unobserve(en.target); } });
-    }, { threshold: 0.12 });
-    reveals.forEach(function(el){ io.observe(el); });
-  }
-})();
-</script>
-@endverbatim
-</body>
-</html>

@@ -1,0 +1,98 @@
+# CI/CD: auto-deploy the Laravel backend to the EC2 server that already hosts it.
+#
+# Triggers:
+#   - push to main            -> production deploy
+#   - manual "Run workflow"   -> deploy any time from the Actions tab
+#
+# Required GitHub secrets (Settings -> Secrets and variables -> Actions):
+#   SSH_HOST   -> server IP/host        (e.g. 23.20.64.92)
+#   SSH_USER   -> SSH login user        (e.g. ubuntu)
+#   SSH_KEY    -> PRIVATE deploy key    (full contents, incl. BEGIN/END lines)
+#   SSH_PORT   -> SSH port              (usually 22)
+#   APP_PATH   -> app path on server    (e.g. /var/www/laravel-app)
+#   APP_URL    -> public URL for the post-deploy health check (optional but recommended)
+#
+# No credentials are hardcoded; everything sensitive comes from repo secrets.
+
+name: Deploy backend to EC2
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false   # never interrupt an in-flight deploy
+
+jobs:
+  deploy:
+    name: SSH deploy
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script_stop: true
+          script: |
+            set -e
+            cd "${{ secrets.APP_PATH }}"
+
+            echo "==> Entering maintenance mode"
+            php artisan down --retry=30 || true
+
+            echo "==> Pulling latest code"
+            git fetch --prune origin
+            # Fast-forward only: fails loudly if the server has diverging local commits.
+            git pull --ff-only origin main
+
+            echo "==> Installing PHP dependencies"
+            composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
+
+            echo "==> Running migrations"
+            php artisan migrate --force
+
+            echo "==> Rebuilding caches"
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:clear
+
+            echo "==> Restarting queue workers (pick up new code)"
+            php artisan queue:restart || true
+
+            echo "==> Fixing storage / cache permissions"
+            sudo chown -R www-data:www-data storage bootstrap/cache || true
+            sudo chmod -R 775 storage bootstrap/cache || true
+
+            echo "==> Reloading PHP-FPM"
+            sudo systemctl reload php8.4-fpm || sudo systemctl reload php-fpm || true
+
+            echo "==> Leaving maintenance mode"
+            php artisan up
+
+            echo "==> Deploy complete"
+
+      - name: Post-deploy health check
+        if: always()
+        run: |
+          if [ -z "${{ secrets.APP_URL }}" ]; then
+            echo "APP_URL secret not set - skipping health check."
+            exit 0
+          fi
+          echo "Checking ${{ secrets.APP_URL }} ..."
+          for i in 1 2 3 4 5; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "${{ secrets.APP_URL }}")
+            echo "Attempt $i -> HTTP $code"
+            if [ "$code" -ge 200 ] && [ "$code" -lt 400 ]; then
+              echo "Health check passed."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Health check FAILED - site is not responding correctly."
+          exit 1
