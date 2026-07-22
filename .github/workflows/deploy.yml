@@ -1,33 +1,35 @@
-# Auto-deploy the Laravel backend to the EC2 server on push to main.
+# CI/CD: auto-deploy the Laravel backend to the EC2 server that already hosts it.
 #
-# Secrets required (Settings -> Secrets and variables -> Actions -> New repository secret):
-#   SSH_HOST  -> the server IP/host (e.g. 23.20.64.92)
-#   SSH_USER  -> the SSH login user (e.g. ubuntu)
-#   SSH_KEY   -> the PRIVATE deploy key (full contents, incl. BEGIN/END lines)
-#   SSH_PORT  -> the SSH port (usually 22)
-#   APP_PATH  -> absolute path to the app on the server (e.g. /var/www/laravel-app)
+# Triggers:
+#   - push to main            -> production deploy
+#   - manual "Run workflow"   -> deploy any time from the Actions tab
 #
-# No credentials are hardcoded here; everything sensitive comes from repo secrets.
+# Required GitHub secrets (Settings -> Secrets and variables -> Actions):
+#   SSH_HOST   -> server IP/host        (e.g. 23.20.64.92)
+#   SSH_USER   -> SSH login user        (e.g. ubuntu)
+#   SSH_KEY    -> PRIVATE deploy key    (full contents, incl. BEGIN/END lines)
+#   SSH_PORT   -> SSH port              (usually 22)
+#   APP_PATH   -> app path on server    (e.g. /var/www/laravel-app)
+#   APP_URL    -> public URL for the post-deploy health check (optional but recommended)
 #
-# NOTE (landing assets): the compiled landing files (public/css, public/images, etc.)
-# are committed to the repo, so `git pull` below already updates them on the server.
-# No separate asset build/upload step is needed for the backend + its static pages.
+# No credentials are hardcoded; everything sensitive comes from repo secrets.
 
 name: Deploy backend to EC2
 
 on:
   push:
-    branches: [ main ]     # deploys fire when main is updated (you currently work on prince_dev)
-  workflow_dispatch:        # allows a manual "Run workflow" from the Actions tab
+    branches: [ main ]
+  workflow_dispatch:
 
 concurrency:
   group: deploy-production
-  cancel-in-progress: false  # never interrupt an in-flight deploy
+  cancel-in-progress: false   # never interrupt an in-flight deploy
 
 jobs:
   deploy:
     name: SSH deploy
     runs-on: ubuntu-latest
+    environment: production
     steps:
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.0
@@ -36,10 +38,13 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          script_stop: true   # stop on first failed command
+          script_stop: true
           script: |
             set -e
             cd "${{ secrets.APP_PATH }}"
+
+            echo "==> Entering maintenance mode"
+            php artisan down --retry=30 || true
 
             echo "==> Pulling latest code"
             git fetch --prune origin
@@ -56,14 +61,38 @@ jobs:
             php artisan config:cache
             php artisan route:cache
             php artisan view:clear
-            # php artisan view:cache   # optional: precompile Blade views
+
+            echo "==> Restarting queue workers (pick up new code)"
+            php artisan queue:restart || true
 
             echo "==> Fixing storage / cache permissions"
-            # Keep writable dirs owned by the web-server user (adjust if not www-data)
             sudo chown -R www-data:www-data storage bootstrap/cache || true
             sudo chmod -R 775 storage bootstrap/cache || true
 
-            echo "==> Reloading PHP-FPM (best-effort; adjust service name if needed)"
+            echo "==> Reloading PHP-FPM"
             sudo systemctl reload php8.4-fpm || sudo systemctl reload php-fpm || true
 
+            echo "==> Leaving maintenance mode"
+            php artisan up
+
             echo "==> Deploy complete"
+
+      - name: Post-deploy health check
+        if: always()
+        run: |
+          if [ -z "${{ secrets.APP_URL }}" ]; then
+            echo "APP_URL secret not set - skipping health check."
+            exit 0
+          fi
+          echo "Checking ${{ secrets.APP_URL }} ..."
+          for i in 1 2 3 4 5; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "${{ secrets.APP_URL }}")
+            echo "Attempt $i -> HTTP $code"
+            if [ "$code" -ge 200 ] && [ "$code" -lt 400 ]; then
+              echo "Health check passed."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Health check FAILED - site is not responding correctly."
+          exit 1
