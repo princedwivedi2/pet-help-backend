@@ -5,12 +5,12 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\ConsultationMessage;
 use App\Models\ConsultationSession;
-use App\Models\Pet;
 use App\Models\VetProfile;
 use App\Services\ConsultationService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Peterujah\Agora\Agora;
 use Peterujah\Agora\Builders\RtcToken;
 use Peterujah\Agora\Roles;
@@ -29,7 +29,13 @@ class ConsultationController extends Controller
     public function start(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'pet_uuid' => 'nullable|string|exists:pets,uuid',
+            'pet_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('pets', 'id')
+                    ->where('user_id', $request->user()->id)
+                    ->whereNull('deleted_at'),
+            ],
             'modality' => 'required|in:video,audio,chat',
             'issue_category' => 'nullable|string|max:80',
             'issue_description' => 'nullable|string|max:2000',
@@ -39,14 +45,7 @@ class ConsultationController extends Controller
         ]);
 
         $user = $request->user();
-        $petId = null;
-        if (!empty($data['pet_uuid'])) {
-            $pet = Pet::where('uuid', $data['pet_uuid'])->first();
-            if (!$pet || $pet->user_id !== $user->id) {
-                return $this->forbidden('Pet does not belong to you.');
-            }
-            $petId = $pet->id;
-        }
+        $petId = $data['pet_id'] ?? null;
 
         // CRIT-01 / D-01: validate fee_amount against vet's stored consultation_fee
         if (!empty($data['vet_uuid']) && isset($data['fee_amount'])) {
@@ -88,7 +87,7 @@ class ConsultationController extends Controller
      */
     public function show(Request $request, string $uuid): JsonResponse
     {
-        $session = ConsultationSession::with(['vetProfile:id,uuid,clinic_name,vet_name', 'pet:id,uuid,name'])
+        $session = ConsultationSession::with(['vetProfile:id,uuid,clinic_name,vet_name', 'pet:id,name'])
             ->where('uuid', $uuid)->first();
         if (!$session) return $this->notFound('Consultation not found');
         if (!$this->canAccess($request->user(), $session)) return $this->forbidden('Access denied');

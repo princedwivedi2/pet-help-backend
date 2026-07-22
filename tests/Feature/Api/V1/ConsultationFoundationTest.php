@@ -41,6 +41,7 @@ class ConsultationFoundationTest extends TestCase
         $response = $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/consultations', [
                 'modality' => 'video',
+                'pet_id' => $this->pet->id,
                 'issue_category' => 'vomiting',
                 'issue_description' => 'Vomited 3 times today',
             ]);
@@ -48,9 +49,28 @@ class ConsultationFoundationTest extends TestCase
         $response->assertStatus(201)->assertJson(['success' => true]);
         $this->assertDatabaseHas('consultation_sessions', [
             'user_id' => $this->user->id,
+            'pet_id' => $this->pet->id,
             'status' => 'matching',
             'modality' => 'video',
             'issue_category' => 'vomiting',
+        ]);
+    }
+
+    public function test_user_cannot_start_consultation_for_another_users_pet(): void
+    {
+        $foreignPet = Pet::factory()->create();
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/consultations', [
+                'modality' => 'chat',
+                'pet_id' => $foreignPet->id,
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['pet_id']);
+
+        $this->assertDatabaseMissing('consultation_sessions', [
+            'user_id' => $this->user->id,
+            'pet_id' => $foreignPet->id,
         ]);
     }
 

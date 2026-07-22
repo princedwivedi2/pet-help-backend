@@ -230,7 +230,7 @@ The full lifecycle for video / audio / chat consults — both **instant** (vet m
 | Method | Path | Notes |
 |---|---|---|
 | GET  | `/api/v1/consultations` | List own (or assigned-to-me, for vets). |
-| POST | `/api/v1/consultations` | User starts an instant consult. Body: `{ modality (video\|audio\|chat), pet_uuid?, issue_category?, issue_description?, fee_amount?, payment_uuid? }`. Returns the session + `available_vets` array. |
+| POST | `/api/v1/consultations` | User starts an instant consult. Body: `{ modality (video\|audio\|chat), pet_id?, issue_category?, issue_description?, fee_amount?, payment_uuid? }`. `pet_id` is the numeric ID of a pet owned by the authenticated user. Returns the session + `available_vets` array. |
 | GET  | `/api/v1/consultations/{uuid}` | Show. |
 | POST | `/api/v1/consultations/{uuid}/accept` | Vet accepts. Creates the WebRTC room, arms 10-min no-show watchdog. |
 | POST | `/api/v1/consultations/{uuid}/join` | Caller (user or assigned vet) gets `{ room_provider, room_id, token, role }`. Token is HMAC-signed and 1-hour TTL. When both parties have joined, status → `active`. |
