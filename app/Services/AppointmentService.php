@@ -559,10 +559,14 @@ class AppointmentService
             $end = 24 * 60;
         } else {
             foreach ($availabilities as $availability) {
-                $openMinutes = (int) substr($availability->open_time, 0, 2) * 60
-                    + (int) substr($availability->open_time, 3, 2);
-                $closeMinutes = (int) substr($availability->close_time, 0, 2) * 60
-                    + (int) substr($availability->close_time, 3, 2);
+                // open_time/close_time are cast to `datetime:H:i` on the model, so they are
+                // Carbon instances here, not plain "HH:MM" strings. substr() on a Carbon
+                // instance triggers __toString() (format "Y-m-d H:i:s"), which silently
+                // produced garbage minute values and made every slot window invalid.
+                $openMinutes = (int) $availability->open_time->format('H') * 60
+                    + (int) $availability->open_time->format('i');
+                $closeMinutes = (int) $availability->close_time->format('H') * 60
+                    + (int) $availability->close_time->format('i');
 
                 for ($m = $openMinutes; $m + $slotDuration <= $closeMinutes; $m += $slotDuration) {
                     $time = sprintf('%02d:%02d', intdiv($m, 60), $m % 60);

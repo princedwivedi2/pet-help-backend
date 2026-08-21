@@ -64,7 +64,7 @@ class DatabaseSeeder extends Seeder
             ['email' => 'vet@petsathi.com'],
             [
                 'name' => 'Dr. Sarah Johnson',
-                'password' => bcrypt('vet123'),
+                'password' => bcrypt('vet12345'),
                 'email_verified_at' => now(),
             ]
         );

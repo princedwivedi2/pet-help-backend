@@ -451,7 +451,7 @@ textarea::placeholder {
 ::-webkit-datetime-edit-second-field,
 ::-webkit-datetime-edit-year-field {
     padding-top: 0;
-    padding-bottom: 0
+    padding-bottom: 0;
 }
 
 select {
