@@ -117,7 +117,7 @@ class Review extends Model
         // Check if linked to a completed appointment
         if ($this->appointment_id) {
             $appointment = Appointment::find($this->appointment_id);
-            if ($appointment && $appointment->status === Appointment::STATUS_COMPLETED) {
+            if ($appointment && $appointment->status === 'completed') {
                 return true;
             }
         }
@@ -125,7 +125,7 @@ class Review extends Model
         // Check if linked to a resolved SOS
         if ($this->sos_request_id) {
             $sos = SosRequest::find($this->sos_request_id);
-            if ($sos && $sos->status === SosRequest::STATUS_RESOLVED) {
+            if ($sos && $sos->status === 'resolved') {
                 return true;
             }
         }

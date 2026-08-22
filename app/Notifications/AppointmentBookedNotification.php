@@ -24,6 +24,7 @@ class AppointmentBookedNotification extends Notification
     {
         return [
             'type'             => 'appointment_booked',
+            'title'            => 'New Appointment Request',
             'appointment_uuid' => $this->appointment->uuid,
             'user_name'        => $this->appointment->user?->name ?? 'Unknown',
             'pet_name'         => $this->appointment->pet?->name,

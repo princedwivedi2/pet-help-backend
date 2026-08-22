@@ -25,6 +25,7 @@ class SosStatusNotification extends Notification
     {
         return [
             'type'             => 'sos_status_update',
+            'title'            => 'SOS Update',
             'sos_uuid'         => $this->sosRequest->uuid,
             'previous_status'  => $this->previousStatus,
             'new_status'       => $this->sosRequest->status,

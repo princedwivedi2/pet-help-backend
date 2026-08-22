@@ -21,6 +21,18 @@ class AppointmentStatusNotification extends Notification
         return ['database', FcmChannel::class];
     }
 
+    private const TITLES = [
+        'accepted'          => 'Appointment Accepted',
+        'rejected'          => 'Appointment Rejected',
+        'confirmed'         => 'Appointment Confirmed',
+        'in_progress'       => 'Vet Visit Started',
+        'completed'         => 'Appointment Completed',
+        'cancelled'         => 'Appointment Cancelled',
+        'cancelled_by_user' => 'Appointment Cancelled',
+        'cancelled_by_vet'  => 'Appointment Cancelled by Vet',
+        'no_show'           => 'Appointment No-Show',
+    ];
+
     public function toArray(object $notifiable): array
     {
         $messages = [
@@ -37,6 +49,7 @@ class AppointmentStatusNotification extends Notification
 
         return [
             'type'                => 'appointment_status_changed',
+            'title'               => self::TITLES[$this->appointment->status] ?? 'Appointment Update',
             'appointment_uuid'    => $this->appointment->uuid,
             'previous_status'     => $this->previousStatus,
             'new_status'          => $this->appointment->status,
@@ -51,18 +64,6 @@ class AppointmentStatusNotification extends Notification
 
     public function toFcm(object $notifiable): array
     {
-        $titles = [
-            'accepted'          => 'Appointment Accepted',
-            'rejected'          => 'Appointment Rejected',
-            'confirmed'         => 'Appointment Confirmed',
-            'in_progress'       => 'Vet Visit Started',
-            'completed'         => 'Appointment Completed',
-            'cancelled'         => 'Appointment Cancelled',
-            'cancelled_by_user' => 'Appointment Cancelled',
-            'cancelled_by_vet'  => 'Appointment Cancelled by Vet',
-            'no_show'           => 'Appointment No-Show',
-        ];
-
         $bodies = [
             'accepted'          => 'Your appointment has been accepted.',
             'rejected'          => 'Your appointment request was not accepted.',
@@ -76,7 +77,7 @@ class AppointmentStatusNotification extends Notification
         ];
 
         return [
-            'title' => $titles[$this->appointment->status] ?? 'Appointment Update',
+            'title' => self::TITLES[$this->appointment->status] ?? 'Appointment Update',
             'body'  => $bodies[$this->appointment->status] ?? 'Your appointment status has changed.',
             'data'  => [
                 'type'             => 'appointment_status_changed',

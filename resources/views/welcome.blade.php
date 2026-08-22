@@ -2,741 +2,589 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RESPAW — Pet Care, Reimagined | Talk to a trusted vet, anytime</title>
-    <meta name="description" content="RESPAW is pet telehealth. Talk to a licensed vet by video or audio, get prescriptions, and keep your pet's health records in one place. Vets: onboard, set your hours, and earn on your schedule.">
-    <meta name="theme-color" content="#b86f3f">
-
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Respaw — Pet care, finally in one place</title>
+    <meta name="description" content="Respaw is an upcoming pet-care platform for finding veterinary care, booking clinic or online consultations, and keeping pet health information organized. Request early access.">
+    <meta name="theme-color" content="#35144F">
+    <meta name="color-scheme" content="light">
     <meta property="og:type" content="website">
-    <meta property="og:title" content="RESPAW — Pet Care, Reimagined">
-    <meta property="og:description" content="Pet telehealth: video/audio vet consultations, prescriptions, records and secure payments — for pet owners and veterinarians.">
-
+    <meta property="og:title" content="Respaw — Pet care, finally in one place">
+    <meta property="og:description" content="Find care, book consultations, and keep your pet's health story close. Respaw is launching soon.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&display=swap" rel="stylesheet">
-    <!-- Compiled, minified Tailwind (no CDN in production). Rebuild: npx tailwindcss -c tailwind.config.js -i resources/css/landing.css -o public/css/landing.css --minify -->
-    <link rel="stylesheet" href="{{ asset('css/landing.css') }}">
-
-    @verbatim
-    <style>
-      html { scroll-behavior: smooth; }
-      :root { --grid: rgba(36,32,29,0.08); }
-      body { font-family: 'Sora', sans-serif;
-        background: radial-gradient(circle at 20% 10%, #fff8ef 0%, #f7f3ed 35%, #efe7dd 100%);
-        color: #161412; overflow-x: hidden; -webkit-font-smoothing: antialiased; }
-      .font-display { font-family: 'Cormorant Garamond', serif; }
-      section[id] { scroll-margin-top: 5rem; }
-      ::selection { background: rgba(184,111,63,.22); }
-
-      /* Restored original page background: drifting warm mesh + faint masked grid, behind all content */
-      .page-bg { position:fixed; inset:0; z-index:-1; pointer-events:none; overflow:hidden; }
-      .page-bg .mesh { position:absolute; inset:-8%;
-        background:
-          radial-gradient(circle at 8% 18%, rgba(184,111,63,.22), transparent 30%),
-          radial-gradient(circle at 86% 10%, rgba(79,105,87,.2), transparent 32%),
-          radial-gradient(circle at 70% 80%, rgba(216,157,98,.2), transparent 40%);
-        animation: mesh-drift 16s ease-in-out infinite alternate; }
-      .page-bg .grid-overlay { position:absolute; inset:0;
-        background-image:
-          linear-gradient(to right, var(--grid) 1px, transparent 1px),
-          linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
-        background-size:48px 48px;
-        -webkit-mask-image: radial-gradient(circle at center, black 35%, transparent 85%);
-        mask-image: radial-gradient(circle at center, black 35%, transparent 85%); }
-      @keyframes mesh-drift { 0%{transform:translate3d(0,0,0) scale(1);} 100%{transform:translate3d(-2%,2%,0) scale(1.08);} }
-
-      #scroll-bar { position:fixed; top:0; left:0; height:2px; width:0%; z-index:9999;
-        background:linear-gradient(90deg,#b86f3f,#d89d62,#4f6957); transition:width .08s linear; }
-
-      #site-header { transition: box-shadow .3s ease, background-color .3s ease, border-color .3s ease; }
-      #site-header.scrolled { box-shadow:0 10px 30px rgba(22,20,18,.06); background-color:rgba(247,243,237,.85); }
-
-      .eyebrow { display:inline-flex; align-items:center; gap:.6rem; font-size:.72rem; font-weight:600;
-        letter-spacing:.2em; text-transform:uppercase; color:#a85e31; }
-      .eyebrow::before { content:''; width:26px; height:1px; background:linear-gradient(90deg,#b86f3f,transparent); }
-      .eyebrow.on-dark { color:#d89d62; }
-      .eyebrow.on-dark::before { background:linear-gradient(90deg,#d89d62,transparent); }
-
-      .uline, .uline-moss { background-repeat:repeat-x; background-position:0 94%; background-size:22px 8px; padding-bottom:.08em; }
-      .uline { background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='8'%3E%3Cpath d='M0 4 Q5.5 0 11 4 T22 4' fill='none' stroke='%23b86f3f' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E"); }
-      .uline-moss { background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='8'%3E%3Cpath d='M0 4 Q5.5 0 11 4 T22 4' fill='none' stroke='%234f6957' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E"); }
-
-      .btn { transition:transform .2s cubic-bezier(.22,1,.36,1), background-color .25s ease, box-shadow .25s ease, color .25s ease; }
-      .btn:hover { transform:translateY(-2px); }
-      .btn:active { transform:translateY(0) scale(.985); }
-      .btn-clay { box-shadow:0 10px 24px rgba(184,111,63,.26); }
-      .btn-clay:hover { box-shadow:0 16px 34px rgba(184,111,63,.32); }
-      .btn-moss { box-shadow:0 10px 24px rgba(79,105,87,.26); }
-      .btn-dark { box-shadow:0 10px 24px rgba(22,20,18,.2); }
-      .btn-amber { box-shadow:0 10px 24px rgba(216,157,98,.3); }
-
-      .reveal { opacity:0; transform:translateY(26px); transition:opacity .7s cubic-bezier(.22,1,.36,1), transform .7s cubic-bezier(.22,1,.36,1); }
-      .reveal.show { opacity:1; transform:none; }
-      .stagger > *:nth-child(1){transition-delay:.04s}
-      .stagger > *:nth-child(2){transition-delay:.10s}
-      .stagger > *:nth-child(3){transition-delay:.16s}
-      .stagger > *:nth-child(4){transition-delay:.22s}
-      .stagger > *:nth-child(5){transition-delay:.28s}
-      .stagger > *:nth-child(6){transition-delay:.34s}
-
-      .card { background:#fff; border:1px solid #efe6da; border-radius:1.25rem;
-        transition:transform .35s cubic-bezier(.22,1,.36,1), box-shadow .35s ease, border-color .35s ease; }
-      .card:hover { transform:translateY(-6px); box-shadow:0 30px 60px rgba(22,20,18,.12); border-color:#e4d6c4; }
-      .icon-badge { transition:transform .35s cubic-bezier(.22,1,.36,1), background-color .35s ease; }
-      .card:hover .icon-badge { transform:scale(1.06) rotate(-3deg); }
-
-      .hero-frame { position:relative; }
-      .hero-frame::before { content:''; position:absolute; inset:18px -18px -18px 18px; border-radius:2rem;
-        background:linear-gradient(135deg, rgba(216,157,98,.35), rgba(79,105,87,.28)); z-index:0; }
-      .hero-frame img { position:relative; z-index:1; }
-
-      .nav-link { position:relative; }
-      .nav-link::after { content:''; position:absolute; bottom:-4px; left:0; width:0; height:1.5px; background:#b86f3f; transition:width .3s ease; border-radius:2px; }
-      .nav-link:hover::after { width:100%; }
-
-      .seg { position:relative; display:inline-flex; background:#fff; border:1px solid #e7dccd; border-radius:999px; padding:5px; box-shadow:0 6px 18px rgba(22,20,18,.06); }
-      .seg .thumb { position:absolute; top:5px; bottom:5px; left:5px; width:calc(50% - 5px); border-radius:999px;
-        background:#161412; box-shadow:0 6px 16px rgba(22,20,18,.22); transition:transform .4s cubic-bezier(.4,0,.2,1), background-color .4s ease; }
-      body.vet-mode .seg .thumb { transform:translateX(100%); background:#4f6957; }
-      .seg button { position:relative; z-index:1; display:inline-flex; align-items:center; gap:.5rem;
-        padding:.62rem 1.35rem; border-radius:999px; font-size:.9rem; font-weight:600; color:#6b5d49; transition:color .3s ease; }
-      .seg button svg { width:16px; height:16px; }
-      .seg button.on { color:#f7f3ed; }
-
-      .aud { transition:opacity .4s ease, transform .4s ease; }
-      .aud-hide { opacity:0; transform:translateY(8px); position:absolute; pointer-events:none; }
-
-      .avatar { display:inline-flex; align-items:center; justify-content:center; font-weight:600; color:#fff; letter-spacing:.02em; }
-
-      /* Emergency: chips, faux map, live pins */
-      .chip { display:inline-flex; align-items:center; gap:.35rem; padding:.4rem .7rem; border-radius:.7rem;
-        background:#f7f3ed; border:1px solid #efe6da; font-size:.75rem; font-weight:600; color:#6b5d49; }
-      .mapbg { position:relative;
-        background:
-          linear-gradient(rgba(79,105,87,.07) 1px, transparent 1px) 0 0 / 28px 28px,
-          linear-gradient(90deg, rgba(79,105,87,.07) 1px, transparent 1px) 0 0 / 28px 28px,
-          radial-gradient(circle at 70% 30%, rgba(216,157,98,.18), transparent 55%),
-          #edf0ea; }
-      .map-road { position:absolute; background:#e2e6dd; border-radius:99px; }
-      .map-pin { animation:pin-pop .5s ease both; }
-      @keyframes pin-pop { from{transform:translateY(-8px) scale(.6); opacity:0} to{transform:none; opacity:1} }
-      .live-ring { position:relative; }
-      .live-ring::after { content:''; position:absolute; inset:-5px; border-radius:999px; border:2px solid rgba(79,105,87,.55); animation:pinger 2s ease-out infinite; }
-      @keyframes pinger { 0%{transform:scale(.8);opacity:.8} 100%{transform:scale(1.9);opacity:0} }
-
-      details.faq { border:1px solid #efe6da; border-radius:1rem; background:#fff; transition:box-shadow .3s ease, border-color .3s ease; }
-      details.faq[open] { box-shadow:0 18px 40px rgba(22,20,18,.08); border-color:#e4d6c4; }
-      details.faq > summary { list-style:none; cursor:pointer; padding:1.15rem 1.35rem; display:flex; justify-content:space-between; align-items:center; gap:1rem; }
-      details.faq > summary:hover { color:#a85e31; }
-      details.faq > summary::-webkit-details-marker { display:none; }
-      details.faq[open] .faq-chev { transform:rotate(180deg); }
-      .faq-chev { transition:transform .25s ease; flex-shrink:0; }
-      .faq-body { padding:0 1.35rem 1.3rem; }
-
-      #back-top { position:fixed; bottom:26px; right:26px; width:46px; height:46px; display:flex; align-items:center; justify-content:center;
-        border-radius:50%; background:#161412; color:#f7f3ed; border:none; cursor:pointer; z-index:900;
-        opacity:0; pointer-events:none; transform:translateY(12px); box-shadow:0 12px 30px rgba(22,20,18,.28);
-        transition:opacity .35s ease, transform .35s ease, background .2s ease; }
-      #back-top.visible { opacity:1; pointer-events:auto; transform:none; }
-      #back-top:hover { background:#b86f3f; transform:translateY(-2px); }
-
-      @media (prefers-reduced-motion: reduce) {
-        html { scroll-behavior:auto; }
-        .reveal { opacity:1 !important; transform:none !important; transition:none; }
-        .card:hover, .btn:hover, .btn:active, #back-top:hover { transform:none !important; }
-        * { transition:none !important; animation:none !important; }
-      }
-    </style>
-    @endverbatim
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
+    @vite(['resources/css/landing.css', 'resources/js/landing.js'])
 </head>
-<body class="font-body text-ink antialiased">
+<body>
+    <a class="skip-link" href="#main-content">Skip to main content</a>
 
-<!-- Original page background: warm drifting mesh + faint grid, fixed behind everything -->
-<div class="page-bg" aria-hidden="true">
-  <div class="mesh"></div>
-  <div class="grid-overlay"></div>
-</div>
+    <svg class="svg-sprite" aria-hidden="true">
+        <symbol id="icon-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14m-5-5 5 5-5 5"/></symbol>
+        <symbol id="icon-arrow-up" viewBox="0 0 24 24"><path d="m6 14 6-6 6 6"/></symbol>
+        <symbol id="icon-audio" viewBox="0 0 24 24"><path d="M4 10v4m4-7v10m4-14v18m4-14v10m4-7v4"/></symbol>
+        <symbol id="icon-bell" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></symbol>
+        <symbol id="icon-calendar" viewBox="0 0 24 24"><path d="M7 3v3m10-3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v14H4V6a1 1 0 0 1 1-1Z"/><path d="M8 13h3m2 0h3m-8 4h3"/></symbol>
+        <symbol id="icon-chat" viewBox="0 0 24 24"><path d="M21 14a4 4 0 0 1-4 4H9l-5 3v-5a7 7 0 1 1 17-2Z"/><path d="M9 11h.01M13 11h.01M17 11h.01"/></symbol>
+        <symbol id="icon-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+        <symbol id="icon-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+        <symbol id="icon-clinic" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 10h6m-3-3v6M8 21v-5h8v5"/></symbol>
+        <symbol id="icon-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+        <symbol id="icon-document" viewBox="0 0 24 24"><path d="M6 2h9l3 3v17H6Z"/><path d="M14 2v5h4M9 12h6m-6 4h6"/></symbol>
+        <symbol id="icon-heartbeat" viewBox="0 0 24 24"><path d="M3 12h4l2-5 4 10 2-5h6"/></symbol>
+        <symbol id="icon-location" viewBox="0 0 24 24"><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></symbol>
+        <symbol id="icon-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+        <symbol id="icon-paw" viewBox="0 0 24 24"><ellipse cx="7" cy="8" rx="2" ry="2.5"/><ellipse cx="17" cy="8" rx="2" ry="2.5"/><ellipse cx="4.5" cy="13" rx="2" ry="2.5"/><ellipse cx="19.5" cy="13" rx="2" ry="2.5"/><path d="M8 18c0-2.3 1.8-4 4-4s4 1.7 4 4c0 2-1.8 3-4 3s-4-1-4-3Z"/></symbol>
+        <symbol id="icon-pill" viewBox="0 0 24 24"><path d="m8.5 19.5-4-4a5 5 0 0 1 7-7l4 4a5 5 0 0 1-7 7Z"/><path d="m8 12 4 4"/></symbol>
+        <symbol id="icon-profile" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 22a8 8 0 0 1 16 0"/></symbol>
+        <symbol id="icon-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11Z"/><path d="M9 12h6m-3-3v6"/></symbol>
+        <symbol id="icon-video" viewBox="0 0 24 24"><rect x="3" y="5" width="13" height="14" rx="2"/><path d="m16 10 5-3v10l-5-3"/></symbol>
+        <symbol id="icon-warning" viewBox="0 0 24 24"><path d="M10.3 3.7 2.4 18a2 2 0 0 0 1.8 3h15.6a2 2 0 0 0 1.8-3L13.7 3.7a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4m0 4h.01"/></symbol>
+    </svg>
 
-<div id="scroll-bar"></div>
-
-<!-- ============ NAV ============ -->
-<header id="site-header" class="fixed top-0 inset-x-0 z-50 backdrop-blur-sm bg-cream/70 border-b border-fog/70">
-  <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-    <a href="#top" class="flex items-center gap-2 font-display text-2xl font-semibold tracking-tight text-ink">
-      <span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-ink text-cream">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 8.5a2 2 0 1 1 0-4 2 2 0 0 1 0 4Zm10 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4ZM4.5 13a2 2 0 1 1 0-4 2 2 0 0 1 0 4Zm15 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4ZM12 22c-3 0-5-1.8-5-4.2 0-1.9 1.6-3 2.7-4 .9-.8 1.3-1.8 2.3-1.8s1.4 1 2.3 1.8c1.1 1 2.7 2.1 2.7 4C17 20.2 15 22 12 22Z"/></svg>
-      </span>
-      RESPAW
-    </a>
-    <nav class="hidden md:flex items-center gap-8 text-sm text-dusk/80">
-      <a href="#how" class="nav-link">How it works</a>
-      <a href="#features" class="nav-link">Features</a>
-      <a href="#emergency" class="nav-link">Emergency</a>
-      <a href="#vets" class="nav-link">For vets</a>
-      <a href="#pricing" class="nav-link">Pricing</a>
-      <a href="#faq" class="nav-link">FAQ</a>
-    </nav>
-    <a href="#waitlist" class="btn btn-dark text-sm font-medium bg-ink text-cream rounded-full px-5 py-2.5 hover:bg-clay">Get early access</a>
-  </div>
-</header>
-
-<main id="top">
-
-<!-- ============ HERO ============ -->
-<section class="pt-32 md:pt-44 pb-20 md:pb-28">
-  <div class="max-w-6xl mx-auto px-6 grid md:grid-cols-2 gap-14 lg:gap-20 items-center">
-    <div>
-      <div class="seg reveal mb-8" role="tablist" aria-label="Choose audience">
-        <span class="thumb" aria-hidden="true"></span>
-        <button id="tab-owner" class="on" role="tab" aria-selected="true">
-          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 8.5a2 2 0 1 1 0-4 2 2 0 0 1 0 4Zm10 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4ZM4.5 13a2 2 0 1 1 0-4 2 2 0 0 1 0 4Zm15 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4ZM12 22c-3 0-5-1.8-5-4.2 0-1.9 1.6-3 2.7-4 .9-.8 1.3-1.8 2.3-1.8s1.4 1 2.3 1.8c1.1 1 2.7 2.1 2.7 4C17 20.2 15 22 12 22Z"/></svg>
-          I have a pet
-        </button>
-        <button id="tab-vet" role="tab" aria-selected="false">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 2v5a4 4 0 0 0 8 0V2"/><path d="M12 11v4a5 5 0 0 0 10 0v-1"/><circle cx="20" cy="13" r="2"/></svg>
-          I'm a vet
-        </button>
-      </div>
-
-      <div id="hero-owner" class="aud">
-        <h1 class="font-display text-5xl sm:text-6xl lg:text-7xl leading-[1.02] font-semibold tracking-tight text-balance">
-          Talk to a trusted vet, <span class="uline italic text-clay">without leaving home.</span>
-        </h1>
-        <p class="mt-7 text-lg text-dusk/75 max-w-md leading-relaxed">
-          RESPAW is pet telehealth. Book a video or audio consultation with a licensed vet, get a
-          prescription, and keep your pet's health records all in one place.
-        </p>
-        <div class="mt-9 flex flex-wrap items-center gap-x-6 gap-y-4">
-          <a href="#waitlist" class="btn btn-clay bg-clay text-cream rounded-full px-7 py-3.5 font-medium hover:bg-[#a85e31]">Book a consultation</a>
-          <a href="#how" class="group inline-flex items-center gap-1.5 text-dusk font-medium hover:text-clay transition">See how it works
-            <span class="transition-transform group-hover:translate-x-1">&rarr;</span></a>
+    <header class="site-header" data-header>
+        <div class="shell header-inner">
+            <a class="brand" href="#top" aria-label="Respaw home">
+                <img src="{{ asset('images/respaw-logo-wordmark.png') }}" alt="Respaw">
+            </a>
+            <nav class="desktop-nav" aria-label="Primary navigation">
+                <a href="#why">Why Respaw</a>
+                <a href="#how">How it works</a>
+                <a href="#care">Care in one place</a>
+                <a href="#faq">FAQ</a>
+            </nav>
+            <a class="button button-small header-cta" href="#early-access">Request early access</a>
+            <button class="menu-button" type="button" aria-label="Open navigation" aria-expanded="false" aria-controls="mobile-menu" data-menu-button>
+                <svg><use href="#icon-menu"/></svg>
+            </button>
         </div>
-      </div>
+        <nav class="mobile-menu" id="mobile-menu" aria-label="Mobile navigation" data-mobile-menu>
+            <a href="#why">Why Respaw</a>
+            <a href="#how">How it works</a>
+            <a href="#care">Care in one place</a>
+            <a href="#faq">FAQ</a>
+            <a class="button" href="#early-access">Request early access</a>
+        </nav>
+    </header>
 
-      <div id="hero-vet" class="aud aud-hide">
-        <h1 class="font-display text-5xl sm:text-6xl lg:text-7xl leading-[1.02] font-semibold tracking-tight text-balance">
-          Treat more pets. <span class="uline-moss italic text-moss">Earn on your schedule.</span>
-        </h1>
-        <p class="mt-7 text-lg text-dusk/75 max-w-md leading-relaxed">
-          Join as a verified vet, set your own availability, run online consultations, and get paid
-          to your wallet — we handle scheduling, records and payments for you.
-        </p>
-        <div class="mt-9 flex flex-wrap items-center gap-x-6 gap-y-4">
-          <a href="#vets" class="btn btn-moss bg-moss text-cream rounded-full px-7 py-3.5 font-medium hover:bg-[#3d5445]">Join as a vet</a>
-          <a href="#vets" class="group inline-flex items-center gap-1.5 text-dusk font-medium hover:text-moss transition">See vet benefits
-            <span class="transition-transform group-hover:translate-x-1">&rarr;</span></a>
+    <main id="main-content">
+        <section class="hero" id="top">
+            <div class="hero-halo" aria-hidden="true"></div>
+            <div class="shell hero-grid">
+                <div class="hero-copy">
+                    <h1>Pet care, finally in one place.</h1>
+                    <p class="hero-lede">Find veterinary care, book clinic or online consultations, keep every record close, and know what to do when something feels urgent.</p>
+                    <div class="hero-actions">
+                        <a class="button button-arrow" href="#early-access">
+                            <span>Request early access</span>
+                            <svg><use href="#icon-arrow-right"/></svg>
+                        </a>
+                        <a class="text-link" href="#how">
+                            See how Respaw works
+                            <svg><use href="#icon-arrow-right"/></svg>
+                        </a>
+                    </div>
+                    <p class="launch-note">
+                        <span class="launch-mark" aria-hidden="true"><svg><use href="#icon-paw"/></svg></span>
+                        <span><strong>Launching soon.</strong> Thoughtful pet care is taking shape.</span>
+                    </p>
+                </div>
+
+                <div class="hero-product" aria-label="Preview of the upcoming Respaw app">
+                    <figure class="hero-photo">
+                        <img src="{{ asset('images/respaw-hero-pet.png') }}" alt="Golden retriever resting in warm light" fetchpriority="high">
+                        <figcaption><strong>Care, made clearer.</strong><span>Launching soon</span></figcaption>
+                    </figure>
+                    <div class="orbit orbit-one" aria-hidden="true"></div>
+                    <div class="orbit orbit-two" aria-hidden="true"></div>
+                    <article class="phone phone-main float-slow">
+                        <div class="phone-top"><span>9:41</span><span class="phone-status">● ●</span></div>
+                        <div class="app-header">
+                            <div>
+                                <p class="app-kicker">Pet profile</p>
+                                <h2>Milo</h2>
+                            </div>
+                            <span class="avatar-paw"><svg><use href="#icon-paw"/></svg></span>
+                        </div>
+                        <div class="pet-meta"><span>3 years</span><span>Dog</span><span>12.4 kg</span></div>
+                        <div class="app-list">
+                            <div class="app-row">
+                                <span class="app-icon lavender"><svg><use href="#icon-document"/></svg></span>
+                                <span><strong>Health records</strong><small>Vaccines, notes, history</small></span>
+                                <svg class="row-arrow"><use href="#icon-chevron"/></svg>
+                            </div>
+                            <div class="app-row">
+                                <span class="app-icon mint"><svg><use href="#icon-calendar"/></svg></span>
+                                <span><strong>Appointments</strong><small>Upcoming and past</small></span>
+                                <svg class="row-arrow"><use href="#icon-chevron"/></svg>
+                            </div>
+                            <div class="app-row">
+                                <span class="app-icon peach"><svg><use href="#icon-pill"/></svg></span>
+                                <span><strong>Medications</strong><small>Schedules and reminders</small></span>
+                                <svg class="row-arrow"><use href="#icon-chevron"/></svg>
+                            </div>
+                        </div>
+                        <div class="app-dock" aria-hidden="true">
+                            <svg><use href="#icon-paw"/></svg>
+                            <svg><use href="#icon-heartbeat"/></svg>
+                            <span><svg><use href="#icon-clinic"/></svg></span>
+                            <svg><use href="#icon-profile"/></svg>
+                        </div>
+                    </article>
+
+                    <article class="mini-screen mini-nearby float-medium">
+                        <div class="mini-head"><span>Nearby care</span><svg><use href="#icon-location"/></svg></div>
+                        <div class="mini-map" aria-hidden="true">
+                            <i class="map-pin pin-one"></i><i class="map-pin pin-two"></i><i class="map-pin pin-three"></i>
+                        </div>
+                        <p><strong>Veterinary care nearby</strong><small>Compare location and visit options</small></p>
+                    </article>
+
+                    <article class="mini-screen mini-appointment float-fast">
+                        <span class="app-icon lavender"><svg><use href="#icon-calendar"/></svg></span>
+                        <p><small>Upcoming appointment</small><strong>Clinic visit</strong><em>Details stay close</em></p>
+                    </article>
+
+                    <article class="mini-screen mini-reminder float-slow">
+                        <span class="app-icon yellow"><svg><use href="#icon-bell"/></svg></span>
+                        <p><small>Reminder</small><strong>Medication due</strong><em>Today at 9:00 AM</em></p>
+                    </article>
+                </div>
+            </div>
+            <div class="shell hero-tail" aria-hidden="true">
+                <span>One calm place for the moments that matter.</span>
+                <div></div>
+            </div>
+        </section>
+
+        <section class="scattered section" id="why">
+            <div class="shell scattered-grid">
+                <div class="section-copy reveal">
+                    <p class="eyebrow">THE SPACE BETWEEN VISITS</p>
+                    <h2>Care gets messy.<br><em>Clarity shouldn’t.</em></h2>
+                    <p>The clinic address in one chat. A prescription in another. A reminder you meant to set. Respaw is being built to bring the whole care journey together—before, during, and after the appointment.</p>
+                </div>
+
+                <div class="care-thread reveal" aria-label="A visual showing scattered pet-care details becoming one calm care thread">
+                    <div class="thread-orb thread-orb-one" aria-hidden="true"></div>
+                    <div class="thread-orb thread-orb-two" aria-hidden="true"></div>
+                    <div class="thread-head">
+                        <div class="thread-pet-mark"><svg><use href="#icon-paw"/></svg></div>
+                        <div><small>ONE CARE THREAD</small><strong>Milo’s story, in context</strong></div>
+                        <span>Launching soon</span>
+                    </div>
+                    <div class="thread-flow">
+                        <div class="thread-fragments">
+                            <span class="thread-side-label">Before</span>
+                            <span class="fragment fragment-chat"><svg><use href="#icon-chat"/></svg><b>Clinic address</b><em>in a chat</em></span>
+                            <span class="fragment fragment-photo"><svg><use href="#icon-document"/></svg><b>Prescription</b><em>in your camera roll</em></span>
+                            <span class="fragment fragment-memory"><svg><use href="#icon-bell"/></svg><b>Next dose</b><em>in your head</em></span>
+                        </div>
+                        <div class="thread-bridge" aria-hidden="true">
+                            <svg viewBox="0 0 120 80" preserveAspectRatio="none"><path d="M4 42C34 5 72 72 116 20"/></svg>
+                            <span><svg><use href="#icon-arrow-right"/></svg></span>
+                        </div>
+                        <div class="thread-record">
+                            <span class="thread-side-label">With Respaw</span>
+                            <div class="record-surface">
+                                <div class="record-surface-head"><span><svg><use href="#icon-paw"/></svg></span><div><small>Pet profile</small><strong>Milo</strong></div><i>3 yrs · Dog</i></div>
+                                <div class="record-surface-line"><span class="surface-dot mint"></span><div><small>UPCOMING</small><b>Clinic appointment</b></div><em>Details stay close</em></div>
+                                <div class="record-surface-line"><span class="surface-dot coral"></span><div><small>REMINDER</small><b>Medication due</b></div><em>Today · 9:00 AM</em></div>
+                                <div class="record-surface-line"><span class="surface-dot lavender"></span><div><small>RECORD</small><b>Vaccination history</b></div><em>Saved with Milo</em></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="thread-foot"><span><svg><use href="#icon-check"/></svg> Less hunting. More knowing.</span><span>One calm place</span></div>
+                </div>
+
+                <div class="paper-trail reveal" aria-label="Pet-care details gathered into one organized journey">
+                    <article class="care-note note-one">
+                        <span class="note-icon coral"><svg><use href="#icon-calendar"/></svg></span>
+                        <small>Appointment note</small>
+                        <strong>Future clinic visit</strong>
+                    </article>
+                    <article class="care-note note-two">
+                        <span class="note-icon mint"><svg><use href="#icon-document"/></svg></span>
+                        <small>Health record</small>
+                        <strong>Vaccination history</strong>
+                    </article>
+                    <article class="care-note note-three">
+                        <span class="note-icon lavender"><svg><use href="#icon-pill"/></svg></span>
+                        <small>Medication</small>
+                        <strong>Next dose reminder</strong>
+                    </article>
+                    <article class="care-note note-four">
+                        <span class="note-icon yellow"><svg><use href="#icon-clinic"/></svg></span>
+                        <small>Saved care</small>
+                        <strong>Clinic details</strong>
+                    </article>
+                    <svg class="trail-line" viewBox="0 0 900 220" preserveAspectRatio="none" aria-hidden="true">
+                        <path d="M5 95C150 205 255 5 420 105s285 100 475-35"/>
+                    </svg>
+                    <span class="trail-paw" aria-hidden="true"><svg><use href="#icon-paw"/></svg></span>
+                </div>
+
+                <div class="journey-phone reveal">
+                    <div class="journey-phone-head">
+                        <div><small>Care journey</small><strong>Everything in context</strong></div>
+                        <span>Milo</span>
+                    </div>
+                    <ol class="timeline">
+                        <li class="purple">
+                            <span><svg><use href="#icon-calendar"/></svg></span>
+                            <div><small>Upcoming</small><strong>Clinic appointment</strong><p>Visit details and preparation</p></div>
+                        </li>
+                        <li class="coral">
+                            <span><svg><use href="#icon-bell"/></svg></span>
+                            <div><small>Reminder</small><strong>Medication due</strong><p>Schedule kept with the record</p></div>
+                        </li>
+                        <li class="mint">
+                            <span><svg><use href="#icon-document"/></svg></span>
+                            <div><small>Record</small><strong>Vaccination history</strong><p>Documents and notes together</p></div>
+                        </li>
+                        <li class="yellow">
+                            <span><svg><use href="#icon-pill"/></svg></span>
+                            <div><small>Prescription</small><strong>Care instructions</strong><p>Easy to return to later</p></div>
+                        </li>
+                    </ol>
+                </div>
+            </div>
+        </section>
+
+        <section class="how section" id="how">
+            <div class="shell">
+                <div class="how-heading reveal">
+                    <h2>From “what now?” to a clearer next step.</h2>
+                    <p>Respaw will make the path through everyday pet care easier to see.</p>
+                </div>
+                <ol class="steps">
+                    <li class="reveal">
+                        <span class="step-number">1</span>
+                        <div>
+                            <h3>Find the right care</h3>
+                            <p>Discover nearby veterinary care and view the details that matter.</p>
+                        </div>
+                    </li>
+                    <li class="reveal">
+                        <span class="step-number">2</span>
+                        <div>
+                            <h3>Choose how to consult</h3>
+                            <p>Book a clinic visit, or choose video, audio, or chat when appropriate.</p>
+                        </div>
+                    </li>
+                    <li class="reveal">
+                        <span class="step-number">3</span>
+                        <div>
+                            <h3>Keep the next step close</h3>
+                            <p>Return to profiles, records, prescriptions, reminders, and appointment history.</p>
+                        </div>
+                    </li>
+                </ol>
+            </div>
+        </section>
+
+        <section class="care section" id="care">
+            <div class="shell care-heading reveal">
+                <div>
+                    <h2>Care that meets the moment.</h2>
+                    <p>Start with nearby veterinary care, then choose the kind of appointment that fits the situation.</p>
+                </div>
+                <p class="sample-note">Product preview · final features may evolve before launch</p>
+            </div>
+
+            <div class="consultation-stage">
+                <div class="shell consultation-grid">
+                    <div class="modality-wrap reveal">
+                        <div class="modality-rail" role="tablist" aria-label="Consultation options">
+                            <button type="button" role="tab" aria-selected="true" aria-controls="consultation-preview" data-mode="clinic">
+                                <svg><use href="#icon-clinic"/></svg><span>Clinic</span>
+                            </button>
+                            <button type="button" role="tab" aria-selected="false" aria-controls="consultation-preview" data-mode="video" tabindex="-1">
+                                <svg><use href="#icon-video"/></svg><span>Video</span>
+                            </button>
+                            <button type="button" role="tab" aria-selected="false" aria-controls="consultation-preview" data-mode="audio" tabindex="-1">
+                                <svg><use href="#icon-audio"/></svg><span>Audio</span>
+                            </button>
+                            <button type="button" role="tab" aria-selected="false" aria-controls="consultation-preview" data-mode="chat" tabindex="-1">
+                                <svg><use href="#icon-chat"/></svg><span>Chat</span>
+                            </button>
+                        </div>
+                        <div class="mode-copy" aria-live="polite">
+                            <span class="mode-icon"><svg><use href="#icon-clinic"/></svg></span>
+                            <div>
+                                <small data-mode-label>Clinic consultation</small>
+                                <strong data-mode-title>Plan an in-person visit</strong>
+                                <p data-mode-copy>Find nearby veterinary care and keep the appointment details close.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <article class="consult-phone reveal" id="consultation-preview">
+                        <div class="phone-top"><span>9:41</span><span class="phone-status">● ●</span></div>
+                        <div class="consult-preview-head">
+                            <span class="back-dot"><svg><use href="#icon-chevron"/></svg></span>
+                            <div><small>Choose how to connect</small><strong data-preview-title>Clinic consultation</strong></div>
+                        </div>
+                        <div class="location-preview" data-preview-scene="clinic">
+                            <div class="search-line"><svg><use href="#icon-location"/></svg><span>Search by location</span></div>
+                            <div class="map-preview" aria-hidden="true">
+                                <span class="map-radius"></span>
+                                <i class="map-pin pin-one"></i><i class="map-pin pin-two"></i><i class="map-pin pin-three"></i>
+                            </div>
+                            <div class="availability-line"><span>Care near you</span><strong>View options</strong></div>
+                        </div>
+                        <div class="remote-preview" data-preview-scene="remote" hidden>
+                            <span class="remote-orbit orbit-a"></span><span class="remote-orbit orbit-b"></span>
+                            <span class="remote-symbol"><svg><use href="#icon-video"/></svg></span>
+                            <strong data-remote-title>Meet online</strong>
+                            <p data-remote-copy>Connect from a quiet place when a remote consultation is appropriate.</p>
+                        </div>
+                        <button class="preview-button" type="button" tabindex="-1">Continue</button>
+                    </article>
+                </div>
+            </div>
+
+            <div class="records-band">
+                <div class="shell records-grid">
+                    <div class="records-copy reveal">
+                        <h2>A clearer picture of their health.</h2>
+                        <p>Profiles, records, prescriptions, reminders, and appointment history stay connected to the pet they belong to.</p>
+                        <ul class="record-index">
+                            <li><span>01</span> Pet profiles</li>
+                            <li><span>02</span> Health records</li>
+                            <li><span>03</span> Prescriptions</li>
+                            <li><span>04</span> Reminders</li>
+                            <li><span>05</span> Appointment history</li>
+                        </ul>
+                    </div>
+                    <div class="record-previews reveal">
+                        <article class="record-phone phone-profile">
+                            <div class="phone-top"><span>9:41</span><span class="phone-status">● ●</span></div>
+                            <div class="profile-hero">
+                                <span class="avatar-paw"><svg><use href="#icon-paw"/></svg></span>
+                                <div><small>Pet profile</small><strong>Milo</strong><p>Care details, all together</p></div>
+                            </div>
+                            <div class="profile-menu">
+                                <span><svg><use href="#icon-document"/></svg> Health records</span>
+                                <span><svg><use href="#icon-pill"/></svg> Prescriptions</span>
+                                <span><svg><use href="#icon-bell"/></svg> Reminders</span>
+                                <span><svg><use href="#icon-calendar"/></svg> Appointment history</span>
+                            </div>
+                        </article>
+                        <article class="record-phone phone-history">
+                            <div class="phone-top"><span>9:41</span><span class="phone-status">● ●</span></div>
+                            <h3>Health records</h3>
+                            <div class="history-tabs"><span>Timeline</span><span>Documents</span></div>
+                            <ol class="mini-timeline">
+                                <li><small>Today</small><strong>New note</strong><p>General observation</p></li>
+                                <li><small>Earlier</small><strong>Clinic visit</strong><p>Visit summary</p></li>
+                                <li><small>Earlier</small><strong>Prescription</strong><p>Care instructions</p></li>
+                                <li><small>Earlier</small><strong>Vaccination</strong><p>Record saved</p></li>
+                            </ol>
+                        </article>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="urgent section" id="urgent">
+            <div class="urgent-lines" aria-hidden="true"></div>
+            <div class="shell urgent-grid">
+                <div class="urgent-copy reveal">
+                    <span class="urgent-symbol" aria-hidden="true"><svg><use href="#icon-heartbeat"/></svg></span>
+                    <h2>When it feels urgent, clarity comes first.</h2>
+                    <p>Respaw will offer calm, practical guidance and help you find appropriate veterinary care. It will not replace a veterinarian or emergency veterinary service.</p>
+                    <a class="button button-coral button-arrow" href="#emergency-disclaimer">
+                        <span>Understand urgent care</span>
+                        <svg><use href="#icon-arrow-right"/></svg>
+                    </a>
+                </div>
+                <div class="urgent-product reveal">
+                    <article class="urgent-phone">
+                        <div class="phone-top"><span>9:41</span><span class="phone-status">● ●</span></div>
+                        <div class="urgent-phone-head">
+                            <span><svg><use href="#icon-shield"/></svg></span>
+                            <div><small>Urgent guidance</small><strong>What is happening?</strong></div>
+                        </div>
+                        <div class="urgent-option danger">
+                            <svg><use href="#icon-warning"/></svg>
+                            <div><strong>Severe or sudden symptoms</strong><p>Contact urgent veterinary care now</p></div>
+                            <svg class="row-arrow"><use href="#icon-chevron"/></svg>
+                        </div>
+                        <div class="urgent-option unsure">
+                            <svg><use href="#icon-chat"/></svg>
+                            <div><strong>Not sure if it is urgent?</strong><p>Use guidance to choose a next step</p></div>
+                            <svg class="row-arrow"><use href="#icon-chevron"/></svg>
+                        </div>
+                        <div class="urgent-option general">
+                            <svg><use href="#icon-document"/></svg>
+                            <div><strong>General guidance</strong><p>For less urgent concerns</p></div>
+                            <svg class="row-arrow"><use href="#icon-chevron"/></svg>
+                        </div>
+                    </article>
+                    <ul class="urgent-benefits">
+                        <li><span class="coral"><svg><use href="#icon-warning"/></svg></span><div><strong>Immediate guidance</strong><p>Clear steps for urgent situations.</p></div></li>
+                        <li><span class="mint"><svg><use href="#icon-location"/></svg></span><div><strong>Find appropriate care</strong><p>Options for nearby veterinary care.</p></div></li>
+                        <li><span class="lavender"><svg><use href="#icon-document"/></svg></span><div><strong>Prepare and act</strong><p>Know what to do and what to share.</p></div></li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <section class="waitlist section" id="early-access">
+            <div class="shell waitlist-grid">
+                <div class="waitlist-copy reveal">
+                    <h2>Be there from the first paw forward.</h2>
+                    <p>Join the early-access list for launch news and a first look at Respaw. No pet records are collected here—just the details we need to keep you posted.</p>
+                    <div class="waitlist-art" aria-hidden="true">
+                        <span class="sun"></span>
+                        <span class="hill hill-one"></span>
+                        <span class="hill hill-two"></span>
+                        <span class="waiting-pet"><svg><use href="#icon-paw"/></svg></span>
+                        <i></i><i></i><i></i><i></i><i></i>
+                    </div>
+                </div>
+
+                <div class="waitlist-panel reveal">
+                    <div class="form-progress" aria-hidden="true">
+                        <span class="active"><b>Sign up</b></span>
+                        <span><b>Sending</b></span>
+                        <span><b>Confirmation</b></span>
+                    </div>
+                    <form id="waitlist-form" novalidate>
+                        <div class="form-fields">
+                            <div class="field">
+                                <label for="name">Your name</label>
+                                <input id="name" name="name" type="text" autocomplete="name" required minlength="2" maxlength="80" placeholder="Your name" aria-describedby="name-error">
+                                <span class="field-error" id="name-error"></span>
+                            </div>
+                            <div class="field">
+                                <label for="email">Email address</label>
+                                <input id="email" name="email" type="email" inputmode="email" autocomplete="email" required maxlength="120" placeholder="you@example.com" aria-describedby="email-error">
+                                <span class="field-error" id="email-error"></span>
+                            </div>
+                        </div>
+
+                        <fieldset class="interest-field">
+                            <legend>I’m interested as</legend>
+                            <div class="interest-options">
+                                <label>
+                                    <input type="radio" name="interest" value="pet-parent" checked>
+                                    <span class="radio-ui"><svg><use href="#icon-profile"/></svg>A pet parent</span>
+                                </label>
+                                <label>
+                                    <input type="radio" name="interest" value="veterinary-professional">
+                                    <span class="radio-ui"><svg><use href="#icon-heartbeat"/></svg>A veterinary professional</span>
+                                </label>
+                            </div>
+                        </fieldset>
+
+                        <label class="consent">
+                            <input id="consent" name="consent" type="checkbox" required aria-describedby="consent-error">
+                            <span>I agree to receive Respaw launch updates. I can unsubscribe at any time.</span>
+                        </label>
+                        <span class="field-error" id="consent-error"></span>
+
+                        <p class="form-error" id="form-error" role="alert" hidden></p>
+                        <button class="button submit-button" type="submit">
+                            <span class="submit-idle">Request early access</span>
+                            <span class="submit-loading"><i aria-hidden="true"></i>Sending request…</span>
+                        </button>
+                        <p class="form-privacy">Your details are used only for Respaw launch communication. Read our <button type="button" data-dialog-open="privacy-dialog">privacy note</button>.</p>
+                    </form>
+
+                    <div class="success-state" id="waitlist-success" role="status" tabindex="-1" hidden>
+                        <span class="success-icon"><svg><use href="#icon-check"/></svg></span>
+                        <div>
+                            <h3>You’re on the early-access list.</h3>
+                            <p>We’ll keep it useful and only write when there’s something worth sharing.</p>
+                        </div>
+                        <button class="text-link" type="button" data-reset-form>Submit another request</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="faq section" id="faq">
+            <div class="shell faq-grid">
+                <div class="faq-heading reveal">
+                    <h2>A few things worth knowing.</h2>
+                    <p>Respaw is still being shaped for launch. Here is what we can say clearly today.</p>
+                </div>
+                <div class="faq-list reveal">
+                    <details>
+                        <summary>When will Respaw launch?<span><svg><use href="#icon-chevron"/></svg></span></summary>
+                        <p>Respaw is in pre-launch development. Join the early-access list and we’ll share meaningful launch updates as the platform gets closer to release.</p>
+                    </details>
+                    <details>
+                        <summary>What will I be able to do in Respaw?<span><svg><use href="#icon-chevron"/></svg></span></summary>
+                        <p>Respaw is being built to help pet parents discover veterinary care, book clinic or online consultations, manage pet profiles and health records, access prescriptions, receive reminders, and revisit appointment history.</p>
+                    </details>
+                    <details>
+                        <summary>Can Respaw help in an emergency?<span><svg><use href="#icon-chevron"/></svg></span></summary>
+                        <p>Respaw will provide practical guidance and help people find appropriate care. It is not an emergency service. If a pet may be in immediate danger, contact a local veterinarian or emergency veterinary service now.</p>
+                    </details>
+                    <details>
+                        <summary>Will Respaw replace my veterinarian?<span><svg><use href="#icon-chevron"/></svg></span></summary>
+                        <p>No. Respaw is a technology platform intended to make access and organization easier. Veterinary professionals remain responsible for clinical assessment, advice, diagnosis, and treatment.</p>
+                    </details>
+                    <details>
+                        <summary>How will my information be used?<span><svg><use href="#icon-chevron"/></svg></span></summary>
+                        <p>The early-access form asks only for contact details and your general interest. Those details are intended for Respaw launch communication, not for pet records or clinical information.</p>
+                    </details>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="site-footer">
+        <div class="shell footer-main">
+            <div class="footer-brand">
+                <img src="{{ asset('images/respaw-logo-wordmark.png') }}" alt="Respaw">
+                <p>Respaw is an upcoming technology platform for pet-care access and organization.</p>
+            </div>
+            <nav class="footer-nav" aria-label="Legal and contact">
+                <button type="button" data-dialog-open="privacy-dialog">Privacy</button>
+                <button type="button" data-dialog-open="terms-dialog">Terms</button>
+                <a href="mailto:hello@respaw.in">Contact</a>
+            </nav>
+            <a class="footer-email" href="mailto:hello@respaw.in">hello@respaw.in</a>
         </div>
-      </div>
-
-      <div class="mt-10 flex items-center gap-5 text-sm text-dusk/60 reveal">
-        <span class="inline-flex items-center gap-2"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4f6957" stroke-width="2.2"><path d="M20 6 9 17l-5-5"/></svg> Verified vets</span>
-        <span class="inline-flex items-center gap-2"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4f6957" stroke-width="2.2"><path d="M20 6 9 17l-5-5"/></svg> Secure payments</span>
-        <span class="hidden sm:inline-flex items-center gap-2"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4f6957" stroke-width="2.2"><path d="M20 6 9 17l-5-5"/></svg> Records you own</span>
-      </div>
-    </div>
-
-    <div class="reveal">
-      <div class="hero-frame">
-        <!-- Real Unsplash photo. To localize for production: curl into public/images/hero-dog.jpg and switch src back to {{ asset('images/hero-dog.jpg') }} -->
-        <img src="https://images.unsplash.com/photo-1450778869180-41d0601e046e?auto=format&fit=crop&w=1200&q=80" alt="A calm dog looking into the camera"
-             loading="eager" class="w-full h-[420px] md:h-[520px] object-cover rounded-[2rem] shadow-soft">
-        <div class="absolute z-10 -bottom-6 -left-4 sm:-left-6 bg-cream border border-fog rounded-2xl shadow-soft px-5 py-4 flex items-center gap-3">
-          <span class="h-11 w-11 rounded-full bg-moss/15 flex items-center justify-center text-moss">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m23 7-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
-          </span>
-          <div>
-            <p class="text-sm font-semibold">Live vet consult</p>
-            <p class="text-xs text-dusk/60">Prescription in minutes</p>
-          </div>
+        <div class="shell emergency-disclaimer" id="emergency-disclaimer">
+            <span><svg><use href="#icon-warning"/></svg></span>
+            <p><strong>If your pet may be in immediate danger, contact a local veterinarian or emergency veterinary service now.</strong> Respaw is not an emergency service.</p>
         </div>
-        <div class="absolute z-10 -top-4 -right-3 sm:-right-5 bg-cream border border-fog rounded-2xl shadow-soft px-4 py-3 flex items-center gap-2">
-          <span class="text-amber text-sm">&#9733;&#9733;&#9733;&#9733;&#9733;</span>
-          <span class="text-xs font-medium text-dusk/70">Loved by pet parents</span>
+        <div class="shell footer-bottom">
+            <p>© <span data-year></span> Respaw. All rights reserved.</p>
+            <p>Launching soon.</p>
         </div>
-      </div>
-    </div>
-  </div>
-</section>
+    </footer>
 
-<!-- ============ STAT STRIP ============ -->
-<section class="border-y border-fog bg-cream/50">
-  <div class="max-w-5xl mx-auto px-6 py-10 grid grid-cols-2 md:grid-cols-4 gap-8 text-center stagger">
-    <div class="reveal"><p class="font-display text-4xl font-semibold text-clay">24/7</p><p class="text-sm text-dusk/60 mt-1">Advice, day or night</p></div>
-    <div class="reveal"><p class="font-display text-4xl font-semibold text-clay">3 ways</p><p class="text-sm text-dusk/60 mt-1">Video, audio or chat</p></div>
-    <div class="reveal"><p class="font-display text-4xl font-semibold text-clay">Verified</p><p class="text-sm text-dusk/60 mt-1">KYC-checked vets</p></div>
-    <div class="reveal"><p class="font-display text-4xl font-semibold text-clay">One place</p><p class="text-sm text-dusk/60 mt-1">Every pet's records</p></div>
-  </div>
-</section>
+    <button class="back-to-top" type="button" aria-label="Back to top" data-back-to-top>
+        <svg><use href="#icon-arrow-up"/></svg>
+    </button>
 
-<!-- ============ HOW IT WORKS — OWNERS ============ -->
-<section id="how" class="py-20 md:py-28">
-  <div class="max-w-6xl mx-auto px-6">
-    <div class="max-w-2xl reveal">
-      <p class="eyebrow">For pet owners</p>
-      <h2 class="font-display text-4xl md:text-5xl font-semibold mt-4 tracking-tight">Care in four simple steps</h2>
-      <p class="text-dusk/70 mt-4 leading-relaxed">From worried to reassured — multiple pets, one profile, everything on record.</p>
-    </div>
-    <div class="mt-16 grid sm:grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-12 stagger">
-      <div class="reveal">
-        <div class="flex items-center gap-3"><span class="font-display text-4xl text-clay/35 font-semibold leading-none">01</span><span class="h-px flex-1 bg-fog"></span></div>
-        <h3 class="font-display text-2xl font-semibold mt-4">Find a vet</h3>
-        <p class="text-sm text-dusk/70 mt-2 leading-relaxed">Search by need, language or specialization and pick a licensed vet that fits.</p>
-      </div>
-      <div class="reveal">
-        <div class="flex items-center gap-3"><span class="font-display text-4xl text-clay/35 font-semibold leading-none">02</span><span class="h-px flex-1 bg-fog"></span></div>
-        <h3 class="font-display text-2xl font-semibold mt-4">Book &amp; pay</h3>
-        <p class="text-sm text-dusk/70 mt-2 leading-relaxed">Choose instant or scheduled and pay securely. Auto-refund if a consult can't complete.</p>
-      </div>
-      <div class="reveal">
-        <div class="flex items-center gap-3"><span class="font-display text-4xl text-clay/35 font-semibold leading-none">03</span><span class="h-px flex-1 bg-fog"></span></div>
-        <h3 class="font-display text-2xl font-semibold mt-4">Consult</h3>
-        <p class="text-sm text-dusk/70 mt-2 leading-relaxed">Join a private video or audio call and describe what's wrong. Chat is available too.</p>
-      </div>
-      <div class="reveal">
-        <div class="flex items-center gap-3"><span class="font-display text-4xl text-clay/35 font-semibold leading-none">04</span><span class="h-px flex-1 bg-fog"></span></div>
-        <h3 class="font-display text-2xl font-semibold mt-4">Prescription &amp; records</h3>
-        <p class="text-sm text-dusk/70 mt-2 leading-relaxed">Notes and prescriptions save straight to your pet's profile — history always with you.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ============ FEATURES ============ -->
-<section id="features" class="py-20 md:py-28 bg-cream/60 border-y border-fog">
-  <div class="max-w-6xl mx-auto px-6">
-    <div class="max-w-2xl reveal">
-      <p class="eyebrow">Everything in one place</p>
-      <h2 class="font-display text-4xl md:text-5xl font-semibold mt-4 tracking-tight">Built for a pet's whole life</h2>
-    </div>
-    <div class="mt-16 grid sm:grid-cols-2 lg:grid-cols-3 gap-6 stagger">
-      <div class="reveal card p-7">
-        <div class="icon-badge h-12 w-12 rounded-2xl bg-clay/10 flex items-center justify-center text-clay mb-5"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m23 7-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></div>
-        <h3 class="font-display text-2xl font-semibold">Online consultations</h3>
-        <p class="text-sm text-dusk/70 mt-2 leading-relaxed">Video, audio or chat with a licensed vet — instant or scheduled.</p>
-      </div>
-      <div class="reveal card p-7">
-        <div class="icon-badge h-12 w-12 rounded-2xl bg-clay/10 flex items-center justify-center text-clay mb-5"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18a2.5 2.5 0 0 1-2.5-2.5C9.5 14 12 12.5 12 12.5s2.5 1.5 2.5 3A2.5 2.5 0 0 1 12 18Z"/></svg></div>
-        <h3 class="font-display text-2xl font-semibold">Pet profiles &amp; records</h3>
-        <p class="text-sm text-dusk/70 mt-2 leading-relaxed">Breed, age, allergies, vaccinations, lab reports and full consult history.</p>
-      </div>
-      <div class="reveal card p-7">
-        <div class="icon-badge h-12 w-12 rounded-2xl bg-clay/10 flex items-center justify-center text-clay mb-5"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="m9 16 2 2 4-4"/></svg></div>
-        <h3 class="font-display text-2xl font-semibold">Appointments</h3>
-        <p class="text-sm text-dusk/70 mt-2 leading-relaxed">Book, reschedule or cancel — online or in-clinic, with reminders.</p>
-      </div>
-      <div class="reveal card p-7">
-        <div class="icon-badge h-12 w-12 rounded-2xl bg-clay/10 flex items-center justify-center text-clay mb-5"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M19 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/><path d="M21 12h-6a2 2 0 0 0 0 4h6a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1Z"/></svg></div>
-        <h3 class="font-display text-2xl font-semibold">Payments &amp; wallet</h3>
-        <p class="text-sm text-dusk/70 mt-2 leading-relaxed">Pay safely via Razorpay; vets get transparent payouts to their wallet.</p>
-      </div>
-      <div class="reveal card p-7">
-        <div class="icon-badge h-12 w-12 rounded-2xl bg-clay/10 flex items-center justify-center text-clay mb-5"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 2 15 9l7 .5-5.5 4.5L18 21l-6-3.8L6 21l1.5-7L2 9.5 9 9z"/></svg></div>
-        <h3 class="font-display text-2xl font-semibold">Reviews &amp; ratings</h3>
-        <p class="text-sm text-dusk/70 mt-2 leading-relaxed">Real ratings from real pet parents help you choose with confidence.</p>
-      </div>
-      <div class="reveal card p-7">
-        <div class="icon-badge h-12 w-12 rounded-2xl bg-clay/10 flex items-center justify-center text-clay mb-5"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg></div>
-        <h3 class="font-display text-2xl font-semibold">Subscriptions</h3>
-        <p class="text-sm text-dusk/70 mt-2 leading-relaxed">Plans for families who consult often — more care, better value.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ============ EMERGENCY ============ -->
-<section id="emergency" class="py-20 md:py-28">
-  <div class="max-w-6xl mx-auto px-6">
-    <div class="grid lg:grid-cols-2 gap-14 lg:gap-20 items-center">
-      <div class="reveal order-2 lg:order-1">
-        <div class="hero-frame">
-          <!-- Real Unsplash photo. Localize later: curl into public/images/emergency-vet.jpg and switch src back to {{ asset('images/emergency-vet.jpg') }} -->
-          <img src="https://images.unsplash.com/photo-1576201836106-db1758fd1c97?auto=format&fit=crop&w=1200&q=80" alt="A vet gently examining a dog" loading="lazy"
-               class="w-full h-[340px] object-cover rounded-[2rem] shadow-soft">
+    <dialog class="legal-dialog" id="privacy-dialog" aria-labelledby="privacy-title">
+        <div class="dialog-head">
+            <h2 id="privacy-title">Pre-launch privacy note</h2>
+            <button type="button" aria-label="Close privacy note" data-dialog-close><svg><use href="#icon-close"/></svg></button>
         </div>
-      </div>
-      <div class="reveal order-1 lg:order-2">
-        <p class="eyebrow">A vet in your pocket</p>
-        <h2 class="font-display text-4xl md:text-5xl font-semibold mt-4 tracking-tight">Even when it can't wait</h2>
-        <p class="text-dusk/70 mt-4 leading-relaxed">Three layers of help, so you're never left stuck: free first-aid guidance you can open even offline, a vet on video in moments, and the nearest 24/7 clinic when hands-on care is needed.</p>
-        <p class="text-xs text-dusk/60 mt-6 leading-relaxed border-l-2 border-clay/40 pl-4">
-          First-aid tips are informational only and <strong>not a substitute for emergency veterinary care.</strong>
-          In a life-threatening emergency, contact your nearest veterinary clinic immediately.
-        </p>
-      </div>
-    </div>
-
-    <!-- Layer 1 + Layer 2 -->
-    <div class="mt-12 grid lg:grid-cols-2 gap-6 stagger">
-      <!-- Layer 1: first-aid quick reference -->
-      <div class="reveal card p-7">
-        <div class="flex items-center gap-3">
-          <span class="shrink-0 h-10 w-10 rounded-full bg-clay text-cream flex items-center justify-center font-semibold shadow-[0_8px_18px_rgba(184,111,63,.28)]">1</span>
-          <h3 class="font-display text-2xl font-semibold">Vet-approved first aid</h3>
+        <div class="dialog-body">
+            <p>The early-access form asks for your name, email address, general interest, and consent to receive launch communication. It does not ask for pet-health or clinical information.</p>
+            <p>These details are intended only for Respaw launch updates. You may ask to update or remove your early-access details by contacting <a href="mailto:hello@respaw.in">hello@respaw.in</a>.</p>
+            <p>This short note is for the pre-launch website and will be replaced by Respaw’s full privacy policy before broader service availability.</p>
         </div>
-        <p class="text-sm text-dusk/70 mt-3 leading-relaxed">Quick-reference cards for common emergencies — clear "do / don't / get to a vet if…" steps that work even offline.</p>
-        <div class="mt-5 flex flex-wrap gap-2">
-          <span class="chip"><span class="h-1.5 w-1.5 rounded-full bg-clay"></span> Poisoning</span>
-          <span class="chip"><span class="h-1.5 w-1.5 rounded-full bg-clay"></span> Choking</span>
-          <span class="chip"><span class="h-1.5 w-1.5 rounded-full bg-clay"></span> Seizure</span>
-          <span class="chip"><span class="h-1.5 w-1.5 rounded-full bg-clay"></span> Heatstroke</span>
-          <span class="chip"><span class="h-1.5 w-1.5 rounded-full bg-clay"></span> Bleeding</span>
-          <span class="chip"><span class="h-1.5 w-1.5 rounded-full bg-clay"></span> Breathing trouble</span>
+    </dialog>
+
+    <dialog class="legal-dialog" id="terms-dialog" aria-labelledby="terms-title">
+        <div class="dialog-head">
+            <h2 id="terms-title">Pre-launch website terms</h2>
+            <button type="button" aria-label="Close terms" data-dialog-close><svg><use href="#icon-close"/></svg></button>
         </div>
-        <div class="mt-5 rounded-2xl bg-cream border border-fog p-4">
-          <p class="text-xs font-semibold text-clay uppercase tracking-wide">Example — Choking</p>
-          <p class="text-sm text-dusk/75 mt-1.5 leading-relaxed"><span class="text-moss font-semibold">Do:</span> stay calm, check the mouth for a visible object. <span class="text-clay font-semibold">Don't:</span> blindly push fingers down the throat.</p>
+        <div class="dialog-body">
+            <p>This website describes an upcoming product. Features, availability, and launch timing may change before release.</p>
+            <p>Respaw is a technology platform and does not replace a veterinarian, diagnosis, treatment, or emergency veterinary service. Do not use this website to submit clinical or emergency information.</p>
+            <p>For questions about this pre-launch website, contact <a href="mailto:hello@respaw.in">hello@respaw.in</a>.</p>
         </div>
-      </div>
-
-      <!-- Layer 2: talk to a vet now -->
-      <div class="reveal card p-7">
-        <div class="flex items-center gap-3">
-          <span class="shrink-0 h-10 w-10 rounded-full bg-clay text-cream flex items-center justify-center font-semibold shadow-[0_8px_18px_rgba(184,111,63,.28)]">2</span>
-          <h3 class="font-display text-2xl font-semibold">Talk to a vet now</h3>
-        </div>
-        <p class="text-sm text-dusk/70 mt-3 leading-relaxed">One tap connects you to the first available vet by video or audio. Your payment is held and refunded if no vet connects.</p>
-        <div class="mt-5 rounded-2xl bg-cream border border-fog p-4 flex items-center gap-3">
-          <span class="live-ring shrink-0 h-11 w-11 rounded-full bg-moss/15 text-moss flex items-center justify-center">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m23 7-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
-          </span>
-          <div class="flex-1 min-w-0">
-            <p class="text-sm font-semibold">Connecting you to a vet…</p>
-            <p class="text-xs text-dusk/60">Typical wait under a minute</p>
-          </div>
-          <span class="shrink-0 bg-clay text-cream text-xs font-semibold rounded-full px-4 py-2">Start</span>
-        </div>
-        <div class="mt-4 flex items-center gap-4 text-xs text-dusk/60">
-          <span class="inline-flex items-center gap-1.5"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4f6957" stroke-width="2.2"><path d="M20 6 9 17l-5-5"/></svg> Video or audio</span>
-          <span class="inline-flex items-center gap-1.5"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4f6957" stroke-width="2.2"><path d="M20 6 9 17l-5-5"/></svg> Prescription if needed</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Layer 3: nearby 24/7 clinic finder -->
-    <div class="mt-6 reveal card overflow-hidden">
-      <div class="grid md:grid-cols-2">
-        <!-- stylized map -->
-        <div class="mapbg min-h-[320px] p-6 relative">
-          <span class="absolute top-4 left-4 z-10 inline-flex items-center gap-2 bg-cream/90 backdrop-blur-sm rounded-full px-3 py-1.5 text-xs font-semibold text-dusk shadow-soft">
-            <span class="h-5 w-5 rounded-full bg-clay text-cream flex items-center justify-center text-[10px]">3</span> Clinics near you
-          </span>
-          <!-- faux roads -->
-          <span class="map-road" style="top:38%; left:-5%; width:110%; height:10px; transform:rotate(-6deg);"></span>
-          <span class="map-road" style="top:8%; left:58%; width:10px; height:90%; transform:rotate(9deg);"></span>
-          <span class="map-road" style="top:70%; left:-5%; width:80%; height:8px; transform:rotate(4deg);"></span>
-          <!-- park block -->
-          <span class="absolute rounded-xl" style="top:14%; left:12%; width:26%; height:26%; background:rgba(79,105,87,.14);"></span>
-          <!-- clinic pins -->
-          <span class="map-pin absolute" style="top:24%; left:30%;">
-            <svg width="30" height="30" viewBox="0 0 24 24" fill="#b86f3f"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7Z"/><circle cx="12" cy="9" r="2.6" fill="#f7f3ed"/></svg>
-          </span>
-          <span class="map-pin absolute" style="top:52%; left:62%; animation-delay:.12s;">
-            <svg width="30" height="30" viewBox="0 0 24 24" fill="#b86f3f"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7Z"/><circle cx="12" cy="9" r="2.6" fill="#f7f3ed"/></svg>
-          </span>
-          <span class="map-pin absolute" style="top:66%; left:24%; animation-delay:.24s;">
-            <svg width="30" height="30" viewBox="0 0 24 24" fill="#b86f3f"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7Z"/><circle cx="12" cy="9" r="2.6" fill="#f7f3ed"/></svg>
-          </span>
-          <!-- you are here -->
-          <span class="absolute" style="top:46%; left:44%;">
-            <span class="live-ring block h-4 w-4 rounded-full bg-moss border-2 border-cream"></span>
-          </span>
-          <span class="absolute bottom-4 right-4 z-10 text-[11px] text-dusk/55 bg-cream/80 rounded-full px-2.5 py-1">Illustrative map</span>
-        </div>
-
-        <!-- clinic list -->
-        <div class="p-6 sm:p-8">
-          <h3 class="font-display text-2xl font-semibold">Find a 24/7 clinic nearby</h3>
-          <p class="text-sm text-dusk/70 mt-2 leading-relaxed">When your pet needs hands-on care, RESPAW points you to the nearest open emergency clinics — directly, or on your vet's referral.</p>
-
-          <ul class="mt-5 space-y-3">
-            <li class="flex items-center gap-3 rounded-2xl border border-fog p-3 hover:border-clay/40 transition">
-              <span class="shrink-0 h-11 w-11 rounded-xl bg-clay/10 text-clay flex items-center justify-center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 2h2v20h-2z"/><path d="M2 11h20v2H2z"/></svg></span>
-              <div class="flex-1 min-w-0">
-                <p class="text-sm font-semibold truncate">PawCare 24/7 Animal Hospital</p>
-                <p class="text-xs text-dusk/60 flex items-center gap-2 mt-0.5"><span>1.2 km away</span><span aria-hidden="true">&middot;</span><span class="inline-flex items-center gap-1 text-moss font-medium"><span class="h-1.5 w-1.5 rounded-full bg-moss"></span> Open now</span></p>
-              </div>
-              <span class="shrink-0 inline-flex items-center gap-1.5 border border-clay text-clay rounded-full px-3.5 py-1.5 text-xs font-semibold"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3-8.6A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.3 1.8.6 2.6a2 2 0 0 1-.4 2.1L8.1 9.9a16 16 0 0 0 6 6l1.5-1.2a2 2 0 0 1 2.1-.4c.8.3 1.7.5 2.6.6a2 2 0 0 1 1.7 2Z"/></svg> Call</span>
-            </li>
-            <li class="flex items-center gap-3 rounded-2xl border border-fog p-3 hover:border-clay/40 transition">
-              <span class="shrink-0 h-11 w-11 rounded-xl bg-clay/10 text-clay flex items-center justify-center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 2h2v20h-2z"/><path d="M2 11h20v2H2z"/></svg></span>
-              <div class="flex-1 min-w-0">
-                <p class="text-sm font-semibold truncate">City Vet Emergency Clinic</p>
-                <p class="text-xs text-dusk/60 flex items-center gap-2 mt-0.5"><span>2.8 km away</span><span aria-hidden="true">&middot;</span><span class="inline-flex items-center gap-1 text-moss font-medium"><span class="h-1.5 w-1.5 rounded-full bg-moss"></span> Open now</span></p>
-              </div>
-              <span class="shrink-0 inline-flex items-center gap-1.5 border border-clay text-clay rounded-full px-3.5 py-1.5 text-xs font-semibold"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3-8.6A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.3 1.8.6 2.6a2 2 0 0 1-.4 2.1L8.1 9.9a16 16 0 0 0 6 6l1.5-1.2a2 2 0 0 1 2.1-.4c.8.3 1.7.5 2.6.6a2 2 0 0 1 1.7 2Z"/></svg> Call</span>
-            </li>
-            <li class="flex items-center gap-3 rounded-2xl border border-fog p-3 hover:border-clay/40 transition">
-              <span class="shrink-0 h-11 w-11 rounded-xl bg-clay/10 text-clay flex items-center justify-center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 2h2v20h-2z"/><path d="M2 11h20v2H2z"/></svg></span>
-              <div class="flex-1 min-w-0">
-                <p class="text-sm font-semibold truncate">GreenCross Pet Hospital</p>
-                <p class="text-xs text-dusk/60 flex items-center gap-2 mt-0.5"><span>4.5 km away</span><span aria-hidden="true">&middot;</span><span class="inline-flex items-center gap-1 text-moss font-medium"><span class="h-1.5 w-1.5 rounded-full bg-moss"></span> Open 24h</span></p>
-              </div>
-              <span class="shrink-0 inline-flex items-center gap-1.5 border border-clay text-clay rounded-full px-3.5 py-1.5 text-xs font-semibold"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3-8.6A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.3 1.8.6 2.6a2 2 0 0 1-.4 2.1L8.1 9.9a16 16 0 0 0 6 6l1.5-1.2a2 2 0 0 1 2.1-.4c.8.3 1.7.5 2.6.6a2 2 0 0 1 1.7 2Z"/></svg> Call</span>
-            </li>
-          </ul>
-          <p class="text-[11px] text-dusk/50 mt-4">Example listings shown. Live clinic results appear in the app based on your location.</p>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ============ FOR VETS ============ -->
-<section id="vets" class="py-20 md:py-28 bg-ink text-cream">
-  <div class="max-w-6xl mx-auto px-6 grid md:grid-cols-2 gap-14 lg:gap-20 items-center">
-    <div class="reveal">
-      <p class="eyebrow on-dark">For veterinarians</p>
-      <h2 class="font-display text-4xl md:text-5xl font-semibold mt-4 tracking-tight">Grow your practice online</h2>
-      <p class="text-cream/70 mt-4 leading-relaxed">Fill idle hours, reach clients beyond your locality, and let us handle scheduling, records and payments. You focus on the care.</p>
-      <div class="mt-8 grid gap-5 text-sm">
-        <div class="flex items-start gap-4"><span class="shrink-0 h-8 w-8 rounded-full border border-amber/50 text-amber flex items-center justify-center text-xs font-semibold">01</span><p class="text-cream/75"><span class="text-cream font-medium">Apply &amp; get verified</span> — sign up and upload your KYC documents; we review and approve.</p></div>
-        <div class="flex items-start gap-4"><span class="shrink-0 h-8 w-8 rounded-full border border-amber/50 text-amber flex items-center justify-center text-xs font-semibold">02</span><p class="text-cream/75"><span class="text-cream font-medium">Set your availability</span> — manage slots and hours; go on-call for emergencies when you want.</p></div>
-        <div class="flex items-start gap-4"><span class="shrink-0 h-8 w-8 rounded-full border border-amber/50 text-amber flex items-center justify-center text-xs font-semibold">03</span><p class="text-cream/75"><span class="text-cream font-medium">Consult &amp; treat</span> — accept bookings and instant consults, write notes, issue prescriptions.</p></div>
-        <div class="flex items-start gap-4"><span class="shrink-0 h-8 w-8 rounded-full border border-amber/50 text-amber flex items-center justify-center text-xs font-semibold">04</span><p class="text-cream/75"><span class="text-cream font-medium">Get paid</span> — earnings land in your wallet; withdraw on the normal payout cycle.</p></div>
-      </div>
-      <a href="#waitlist" class="btn btn-amber inline-block mt-9 bg-amber text-ink rounded-full px-7 py-3.5 font-medium hover:bg-clay hover:text-cream">Join as a vet</a>
-    </div>
-    <div class="reveal">
-      <div class="relative">
-        <!-- Real Unsplash photo. Localize later: curl into public/images/vet-with-dog.jpg and switch src back to {{ asset('images/vet-with-dog.jpg') }} -->
-        <img src="https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&w=1200&q=80" alt="A veterinarian with a happy dog" loading="lazy"
-             class="w-full h-[440px] object-cover rounded-[2rem] shadow-soft">
-        <div class="absolute -bottom-6 -right-4 sm:-right-6 bg-cream text-ink rounded-2xl shadow-soft px-5 py-4">
-          <p class="font-display text-2xl font-semibold text-moss leading-none">Your hours</p>
-          <p class="text-xs text-dusk/60 mt-1">You set them. We handle the rest.</p>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ============ TESTIMONIALS ============ -->
-<section class="py-20 md:py-28">
-  <div class="max-w-6xl mx-auto px-6">
-    <div class="max-w-2xl reveal">
-      <p class="eyebrow">Loved by pet parents &amp; vets</p>
-      <h2 class="font-display text-4xl md:text-5xl font-semibold mt-4 tracking-tight">Care people come back to</h2>
-    </div>
-    <div class="mt-16 grid md:grid-cols-3 gap-6 stagger">
-      <figure class="reveal card p-7">
-        <div class="text-amber text-lg" aria-label="5 out of 5 stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
-        <blockquote class="mt-4 text-dusk/80 leading-relaxed">"My pup had an upset stomach at 11pm. A vet was on video in minutes and had a prescription sent before I'd finished worrying."</blockquote>
-        <figcaption class="mt-6 flex items-center gap-3">
-          <span class="avatar h-10 w-10 rounded-full" style="background:#b86f3f">A</span>
-          <div><p class="text-sm font-semibold">Aditi R.</p><p class="text-xs text-dusk/60">Dog parent</p></div>
-        </figcaption>
-      </figure>
-      <figure class="reveal card p-7">
-        <div class="text-amber text-lg" aria-label="5 out of 5 stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
-        <blockquote class="mt-4 text-dusk/80 leading-relaxed">"Having every vaccination and prescription in one profile means I never scramble for records again. It just lives in the app."</blockquote>
-        <figcaption class="mt-6 flex items-center gap-3">
-          <span class="avatar h-10 w-10 rounded-full" style="background:#4f6957">M</span>
-          <div><p class="text-sm font-semibold">Marcus T.</p><p class="text-xs text-dusk/60">Cat parent</p></div>
-        </figcaption>
-      </figure>
-      <figure class="reveal card p-7">
-        <div class="text-amber text-lg" aria-label="5 out of 5 stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
-        <blockquote class="mt-4 text-dusk/80 leading-relaxed">"I take consults between clinic hours and payouts just arrive in my wallet. It's found me clients I'd never have reached."</blockquote>
-        <figcaption class="mt-6 flex items-center gap-3">
-          <span class="avatar h-10 w-10 rounded-full" style="background:#d89d62">P</span>
-          <div><p class="text-sm font-semibold">Dr. Priya S.</p><p class="text-xs text-dusk/60">Veterinarian</p></div>
-        </figcaption>
-      </figure>
-    </div>
-  </div>
-</section>
-
-<!-- ============ PRICING ============ -->
-<section id="pricing" class="py-20 md:py-28 bg-cream/60 border-y border-fog">
-  <div class="max-w-6xl mx-auto px-6">
-    <div class="max-w-2xl reveal">
-      <p class="eyebrow">Simple &amp; transparent</p>
-      <h2 class="font-display text-4xl md:text-5xl font-semibold mt-4 tracking-tight">Pay only for what you need</h2>
-      <p class="text-dusk/70 mt-4 leading-relaxed">Final pricing is confirmed at launch. No hidden fees — and vets always keep the majority of each consult.</p>
-    </div>
-    <div class="mt-16 grid md:grid-cols-3 gap-6 items-stretch stagger">
-      <div class="reveal card p-8 flex flex-col">
-        <h3 class="font-display text-2xl font-semibold">Pay per consult</h3>
-        <p class="text-sm text-dusk/60 mt-1">For occasional care</p>
-        <p class="font-display text-4xl font-semibold text-clay mt-6">Per visit</p>
-        <ul class="mt-6 space-y-3 text-sm text-dusk/75 flex-1">
-          <li class="flex gap-2"><span class="text-moss">&#10003;</span> One video or audio consultation</li>
-          <li class="flex gap-2"><span class="text-moss">&#10003;</span> Prescription saved to records</li>
-          <li class="flex gap-2"><span class="text-moss">&#10003;</span> No commitment</li>
-        </ul>
-        <a href="#waitlist" class="btn mt-8 text-center border border-fog rounded-full px-6 py-3 font-medium hover:border-clay hover:text-clay transition">Get early access</a>
-      </div>
-      <div class="reveal card p-8 flex flex-col ring-2 ring-clay relative shadow-soft">
-        <span class="absolute -top-3 left-8 bg-clay text-cream text-xs font-semibold rounded-full px-3 py-1">Best value</span>
-        <h3 class="font-display text-2xl font-semibold">Subscription</h3>
-        <p class="text-sm text-dusk/60 mt-1">For families who consult often</p>
-        <p class="font-display text-4xl font-semibold text-clay mt-6">Plans</p>
-        <ul class="mt-6 space-y-3 text-sm text-dusk/75 flex-1">
-          <li class="flex gap-2"><span class="text-moss">&#10003;</span> Recurring consults included</li>
-          <li class="flex gap-2"><span class="text-moss">&#10003;</span> Multi-pet friendly</li>
-          <li class="flex gap-2"><span class="text-moss">&#10003;</span> Priority booking &amp; added benefits</li>
-        </ul>
-        <a href="#waitlist" class="btn btn-clay mt-8 text-center bg-clay text-cream rounded-full px-6 py-3 font-medium hover:bg-[#a85e31]">Get early access</a>
-      </div>
-      <div class="reveal card p-8 flex flex-col">
-        <h3 class="font-display text-2xl font-semibold">Emergency consult</h3>
-        <p class="text-sm text-dusk/60 mt-1">When it can't wait</p>
-        <p class="font-display text-4xl font-semibold text-clay mt-6">Premium</p>
-        <ul class="mt-6 space-y-3 text-sm text-dusk/75 flex-1">
-          <li class="flex gap-2"><span class="text-moss">&#10003;</span> First available vet, on demand</li>
-          <li class="flex gap-2"><span class="text-moss">&#10003;</span> Held &amp; refunded if none connects</li>
-          <li class="flex gap-2"><span class="text-moss">&#10003;</span> Free first-aid tips always included</li>
-        </ul>
-        <a href="#waitlist" class="btn mt-8 text-center border border-fog rounded-full px-6 py-3 font-medium hover:border-clay hover:text-clay transition">Get early access</a>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ============ WAITLIST ============ -->
-<section id="waitlist" class="py-20 md:py-28">
-  <div class="max-w-2xl mx-auto px-6 text-center reveal">
-    <p class="eyebrow justify-center">Coming soon</p>
-    <h2 class="font-display text-4xl md:text-5xl font-semibold mt-4 tracking-tight">Be first to know at launch</h2>
-    <p class="text-dusk/70 mt-4 leading-relaxed">The RESPAW apps are coming soon to the App&nbsp;Store and Google&nbsp;Play. Leave your email and we'll tell you the moment they're live — pet owners and vets both welcome.</p>
-    <form id="waitlist-form" class="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
-      <!-- TODO (backend): POST to a Laravel waitlist endpoint to persist leads. Currently client-side confirmation only. -->
-      <label for="wl-email" class="sr-only">Email address</label>
-      <input id="wl-email" type="email" required placeholder="you@example.com"
-             class="flex-1 rounded-full border border-fog bg-white px-5 py-3.5 outline-none focus:border-clay focus:ring-2 focus:ring-clay/20 transition">
-      <button type="submit" class="btn btn-dark bg-ink text-cream rounded-full px-7 py-3.5 font-medium hover:bg-clay">Notify me</button>
-    </form>
-    <p id="wl-msg" class="text-sm font-medium text-moss mt-4 hidden">Thanks — we'll email you at launch.</p>
-    <p class="text-xs text-dusk/50 mt-3">No spam. Just one message when we go live.</p>
-  </div>
-</section>
-
-<!-- ============ FAQ ============ -->
-<section id="faq" class="py-20 md:py-28 bg-cream/60 border-t border-fog">
-  <div class="max-w-3xl mx-auto px-6">
-    <h2 class="font-display text-4xl md:text-5xl font-semibold text-center tracking-tight reveal">Questions, answered</h2>
-    <div class="mt-12 space-y-3 stagger">
-      <details class="faq reveal">
-        <summary class="font-medium"><span>What can a vet help with online?</span><svg class="faq-chev text-clay" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></summary>
-        <p class="faq-body text-sm text-dusk/70 leading-relaxed">Advice on symptoms, behaviour, diet, minor illnesses, follow-ups, and whether an in-person visit is needed. The vet can issue a prescription saved to your pet's records. For hands-on treatment you'll be referred to a clinic.</p>
-      </details>
-      <details class="faq reveal">
-        <summary class="font-medium"><span>How does the emergency option work?</span><svg class="faq-chev text-clay" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></summary>
-        <p class="faq-body text-sm text-dusk/70 leading-relaxed">You always have free, vet-approved first-aid tips. If you need more, "talk to a vet now" connects you to the first available vet by video. If none connects, your payment is refunded and we point you to nearby 24/7 clinics. It is not a substitute for emergency veterinary care.</p>
-      </details>
-      <details class="faq reveal">
-        <summary class="font-medium"><span>Is my pet's data private?</span><svg class="faq-chev text-clay" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></summary>
-        <p class="faq-body text-sm text-dusk/70 leading-relaxed">Yes. Records and documents are stored privately with signed, temporary access — your data stays yours.</p>
-      </details>
-      <details class="faq reveal">
-        <summary class="font-medium"><span>I'm a vet — how do I get verified and paid?</span><svg class="faq-chev text-clay" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></summary>
-        <p class="faq-body text-sm text-dusk/70 leading-relaxed">Sign up, upload your KYC documents, and get approved. Earnings from each consult land in your in-app wallet, which you can pay out to your bank on the normal payout cycle. You set your own hours.</p>
-      </details>
-    </div>
-  </div>
-</section>
-
-</main>
-
-<!-- ============ FOOTER ============ -->
-<footer class="bg-ink text-cream/70 py-16">
-  <div class="max-w-6xl mx-auto px-6 grid md:grid-cols-4 gap-10">
-    <div class="md:col-span-1">
-      <p class="flex items-center gap-2 font-display text-2xl font-semibold text-cream">
-        <span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-cream text-ink">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 8.5a2 2 0 1 1 0-4 2 2 0 0 1 0 4Zm10 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4ZM4.5 13a2 2 0 1 1 0-4 2 2 0 0 1 0 4Zm15 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4ZM12 22c-3 0-5-1.8-5-4.2 0-1.9 1.6-3 2.7-4 .9-.8 1.3-1.8 2.3-1.8s1.4 1 2.3 1.8c1.1 1 2.7 2.1 2.7 4C17 20.2 15 22 12 22Z"/></svg>
-        </span> RESPAW
-      </p>
-      <p class="text-sm mt-3 leading-relaxed">Pet telehealth — trusted care for your pet, anytime.</p>
-    </div>
-    <div>
-      <h4 class="text-cream text-sm font-medium mb-3">Pet owners</h4>
-      <ul class="space-y-2 text-sm">
-        <li><a href="#how" class="hover:text-amber transition">How it works</a></li>
-        <li><a href="#emergency" class="hover:text-amber transition">Emergency care</a></li>
-        <li><a href="#features" class="hover:text-amber transition">Features</a></li>
-        <li><a href="#pricing" class="hover:text-amber transition">Pricing</a></li>
-      </ul>
-    </div>
-    <div>
-      <h4 class="text-cream text-sm font-medium mb-3">Vets</h4>
-      <ul class="space-y-2 text-sm">
-        <li><a href="#vets" class="hover:text-amber transition">Why join</a></li>
-        <li><a href="#waitlist" class="hover:text-amber transition">Join as a vet</a></li>
-      </ul>
-    </div>
-    <div>
-      <h4 class="text-cream text-sm font-medium mb-3">Company</h4>
-      <ul class="space-y-2 text-sm">
-        <li><a href="#faq" class="hover:text-amber transition">FAQ</a></li>
-        <li><a href="#" class="hover:text-amber transition">Privacy Policy</a></li>
-        <li><a href="#" class="hover:text-amber transition">Terms of Service</a></li>
-      </ul>
-    </div>
-  </div>
-  <div class="max-w-6xl mx-auto px-6 mt-12 pt-6 border-t border-cream/10 text-sm flex flex-col sm:flex-row justify-between gap-2">
-    <p>&copy; <span id="year"></span> RESPAW. All rights reserved.</p>
-    <p>Apps coming soon to the App&nbsp;Store &amp; Google&nbsp;Play.</p>
-  </div>
-</footer>
-
-<button id="back-top" aria-label="Back to top">
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m18 15-6-6-6 6"/></svg>
-</button>
-
-@verbatim
-<script>
-(function () {
-  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  document.getElementById('year').textContent = new Date().getFullYear();
-
-  var tabOwner = document.getElementById('tab-owner');
-  var tabVet   = document.getElementById('tab-vet');
-  var heroOwner = document.getElementById('hero-owner');
-  var heroVet   = document.getElementById('hero-vet');
-  function setAudience(vet) {
-    document.body.classList.toggle('vet-mode', vet);
-    tabOwner.classList.toggle('on', !vet);
-    tabVet.classList.toggle('on', vet);
-    tabOwner.setAttribute('aria-selected', String(!vet));
-    tabVet.setAttribute('aria-selected', String(vet));
-    heroOwner.classList.toggle('aud-hide', vet);
-    heroVet.classList.toggle('aud-hide', !vet);
-  }
-  tabOwner.addEventListener('click', function(){ setAudience(false); });
-  tabVet.addEventListener('click', function(){ setAudience(true); });
-
-  var bar = document.getElementById('scroll-bar');
-  var backTop = document.getElementById('back-top');
-  var header = document.getElementById('site-header');
-  function onScroll(){
-    var h = document.documentElement;
-    var scrolled = h.scrollTop / (h.scrollHeight - h.clientHeight);
-    bar.style.width = (scrolled * 100) + '%';
-    backTop.classList.toggle('visible', h.scrollTop > 600);
-    header.classList.toggle('scrolled', h.scrollTop > 12);
-  }
-  onScroll(); window.addEventListener('scroll', onScroll, { passive:true });
-  backTop.addEventListener('click', function(){ window.scrollTo({ top:0, behavior: reduce ? 'auto' : 'smooth' }); });
-
-  var form = document.getElementById('waitlist-form');
-  form.addEventListener('submit', function(e){
-    e.preventDefault();
-    document.getElementById('wl-msg').classList.remove('hidden');
-    form.reset();
-  });
-
-  var reveals = Array.prototype.slice.call(document.querySelectorAll('.reveal'));
-  if (reduce || !('IntersectionObserver' in window)) {
-    reveals.forEach(function(el){ el.classList.add('show'); });
-  } else {
-    var io = new IntersectionObserver(function(entries){
-      entries.forEach(function(en){ if (en.isIntersecting){ en.target.classList.add('show'); io.unobserve(en.target); } });
-    }, { threshold: 0.12 });
-    reveals.forEach(function(el){ io.observe(el); });
-  }
-})();
-</script>
-@endverbatim
+    </dialog>
 </body>
 </html>

@@ -24,6 +24,7 @@ class VetApprovedNotification extends Notification
     {
         return [
             'type'             => 'vet_approved',
+            'title'            => 'Profile Approved',
             'vet_profile_uuid' => $this->vetProfile->uuid,
             'message'          => 'Your vet profile has been approved. You can now log in and start accepting appointments.',
         ];
