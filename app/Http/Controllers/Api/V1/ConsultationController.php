@@ -131,6 +131,43 @@ class ConsultationController extends Controller
     }
 
     /**
+     * GET /api/v1/consultations/available   (vet)
+     *
+     * Unassigned instant video/audio requests this vet is eligible to pick up —
+     * i.e. still in the "matching" broadcast window (see
+     * ConsultationService::listAvailableVets for the matching eligibility rules
+     * this mirrors: approved + active + online_fee set + species match).
+     * Chat is excluded — chat consultations are handled by the AI assistant,
+     * not broadcast to vets.
+     */
+    public function availableForVet(Request $request): JsonResponse
+    {
+        $vetProfile = VetProfile::where('user_id', $request->user()->id)->first();
+        if (!$vetProfile || !$vetProfile->isApproved()) {
+            return $this->forbidden('Only approved vets can view available consultations.');
+        }
+
+        $sessions = ConsultationSession::query()
+            ->where('status', 'matching')
+            ->whereNull('vet_profile_id')
+            ->whereIn('modality', ['video', 'audio'])
+            ->when($vetProfile->accepted_species, function ($q) use ($vetProfile) {
+                $q->where(function ($q2) use ($vetProfile) {
+                    $q2->whereNull('pet_id')
+                        ->orWhereHas('pet', function ($petQuery) use ($vetProfile) {
+                            $petQuery->whereIn('species', $vetProfile->accepted_species);
+                        });
+                });
+            })
+            ->with(['user:id,name', 'pet:id,name,species'])
+            ->orderBy('created_at')
+            ->limit(20)
+            ->get();
+
+        return $this->success('Available consultations retrieved', ['consultations' => $sessions]);
+    }
+
+    /**
      * POST /api/v1/consultations/{uuid}/accept   (vet)
      */
     public function accept(Request $request, string $uuid): JsonResponse

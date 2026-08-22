@@ -66,10 +66,15 @@ class PaymentController extends Controller
             if ($payable->user_id !== $user->id) {
                 return $this->forbidden('You can only pay for your own consultations.');
             }
-            if (!$payable->fee_amount) {
-                return $this->error('No fee has been set for this consultation.', null, 422);
+            if ($payable->fee_amount) {
+                $amount = $payable->fee_amount;
+            } elseif ($payable->vetProfile?->consultation_fee) {
+                $amount = $payable->vetProfile->consultation_fee;
+            } else {
+                // Platform default for instant-match consults created before a
+                // vet is assigned (no vet_profile to derive a fee from yet).
+                $amount = 20000; // ₹200 in paise
             }
-            $amount       = $payable->fee_amount;
             $vetProfileId = $payable->vet_profile_id;
             $payableType  = 'consultation';
         } else {
