@@ -27,8 +27,14 @@ class BlogCommentNotification extends Notification
             'approved'  => "Your comment on \"{$this->comment->blogPost?->title}\" has been approved.",
         ];
 
+        $titles = [
+            'submitted' => 'New Comment Pending Approval',
+            'approved'  => 'Comment Approved',
+        ];
+
         return [
             'type'          => 'blog_comment_' . $this->action,
+            'title'         => $titles[$this->action] ?? 'Blog Comment Update',
             'comment_uuid'  => $this->comment->uuid,
             'post_uuid'     => $this->comment->blogPost?->uuid,
             'post_title'    => $this->comment->blogPost?->title,
