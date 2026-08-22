@@ -304,6 +304,7 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
     Route::middleware('throttle:30,1')->prefix('consultations')->group(function () {
         Route::get('/', [ConsultationController::class, 'index']);
         Route::post('/', [ConsultationController::class, 'start']);                      // user
+        Route::get('/available', [ConsultationController::class, 'availableForVet']);    // vet — must precede /{uuid}
         Route::get('/{uuid}', [ConsultationController::class, 'show']);
         Route::post('/{uuid}/accept', [ConsultationController::class, 'accept']);        // vet
         Route::post('/{uuid}/join', [ConsultationController::class, 'join']);
