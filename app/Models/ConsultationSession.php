@@ -53,6 +53,11 @@ class ConsultationSession extends Model
         'prescription',
     ];
 
+    // Flat, display-friendly fields the mobile apps render directly
+    // (list cards, incoming-request cards) — derived from the user/pet
+    // relations rather than duplicated columns.
+    protected $appends = ['pet_name', 'owner_name'];
+
     protected function casts(): array
     {
         return [
@@ -112,6 +117,16 @@ class ConsultationSession extends Model
     public function messages(): HasMany
     {
         return $this->hasMany(ConsultationMessage::class);
+    }
+
+    public function getPetNameAttribute(): ?string
+    {
+        return $this->pet?->name;
+    }
+
+    public function getOwnerNameAttribute(): ?string
+    {
+        return $this->user?->name;
     }
 
     public function isActive(): bool

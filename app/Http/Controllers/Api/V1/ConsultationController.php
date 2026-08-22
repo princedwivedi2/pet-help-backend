@@ -103,7 +103,7 @@ class ConsultationController extends Controller
     {
         $user = $request->user();
         $perPage = min((int) ($request->per_page ?? 15), 50);
-        $query = ConsultationSession::query()->orderByDesc('created_at');
+        $query = ConsultationSession::query()->with(['user:id,name', 'pet:id,name'])->orderByDesc('created_at');
 
         if ($user->isVet()) {
             $vetProfile = VetProfile::where('user_id', $user->id)->first();
