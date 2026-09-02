@@ -46,6 +46,10 @@ class Appointment extends Model
         'vet_start_longitude',
         'vet_end_latitude',
         'vet_end_longitude',
+        'reschedule_requested_at',
+        'reschedule_requested_scheduled_at',
+        'reschedule_requested_reason',
+        'reschedule_requested_by',
     ];
 
     protected function casts(): array
@@ -62,6 +66,8 @@ class Appointment extends Model
             'cancelled_at'              => 'datetime',
             'visit_started_at'          => 'datetime',
             'visit_ended_at'            => 'datetime',
+            'reschedule_requested_at'            => 'datetime',
+            'reschedule_requested_scheduled_at'  => 'datetime',
             'home_latitude'             => 'decimal:8',
             'home_longitude'            => 'decimal:8',
             'vet_start_latitude'        => 'decimal:8',
@@ -227,6 +233,16 @@ class Appointment extends Model
     public function isHomeVisit(): bool
     {
         return $this->appointment_type === 'home_visit';
+    }
+
+    public function isOnline(): bool
+    {
+        return $this->appointment_type === 'online';
+    }
+
+    public function hasPendingRescheduleRequest(): bool
+    {
+        return $this->reschedule_requested_scheduled_at !== null;
     }
 
     public function getRouteKeyName(): string

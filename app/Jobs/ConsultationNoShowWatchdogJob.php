@@ -45,27 +45,67 @@ class ConsultationNoShowWatchdogJob implements ShouldQueue
                     continue;
                 }
 
-                // Auto-refund the held payment, if any.
-                if ($session->payment_id) {
-                    $payment = \App\Models\Payment::find($session->payment_id);
-                    if ($payment && $payment->isPaid()) {
-                        try {
-                            $paymentService->refund($payment, null, 'auto_refund: vet_no_show_10min');
-                        } catch (\Throwable $e) {
-                            Log::error('Auto-refund failed after vet no-show', [
-                                'session_uuid' => $session->uuid,
-                                'payment_uuid' => $payment->uuid,
-                                'error' => $e->getMessage(),
-                            ]);
-                        }
-                    }
-                }
+                $this->refundIfPaid($session, $paymentService, 'auto_refund: vet_no_show_10min');
             } catch (\Throwable $e) {
                 Log::error('No-show watchdog error for session', [
                     'session_uuid' => $session->uuid,
                     'error' => $e->getMessage(),
                 ]);
             }
+        }
+
+        // Scheduled (slot-booked) sessions: expire any whose join window has closed
+        // without both parties joining (mirrors the instant-consult no-show rule above,
+        // but gated on the linked appointment's scheduled_at instead of matched_at).
+        $scheduledCandidates = ConsultationSession::query()
+            ->where('origin', 'scheduled')
+            ->whereIn('status', ['matched', 'joining'])
+            ->where(function ($q) {
+                $q->whereNull('user_joined_at')->orWhereNull('vet_joined_at');
+            })
+            ->whereHas('appointment', function ($q) {
+                $q->where('scheduled_at', '<=', now()->subMinutes(\App\Services\ConsultationService::SCHEDULED_JOIN_GRACE_MINUTES));
+            })
+            ->with('appointment')
+            ->limit(50)
+            ->get();
+
+        foreach ($scheduledCandidates as $session) {
+            try {
+                $expired = $consultationService->expireIfScheduledWindowMissed($session);
+                if (!$expired) {
+                    continue;
+                }
+
+                $this->refundIfPaid($session, $paymentService, 'auto_refund: scheduled_window_missed');
+            } catch (\Throwable $e) {
+                Log::error('Scheduled-window watchdog error for session', [
+                    'session_uuid' => $session->uuid,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+
+    private function refundIfPaid(ConsultationSession $session, PaymentService $paymentService, string $reason): void
+    {
+        if (!$session->payment_id) {
+            return;
+        }
+
+        $payment = \App\Models\Payment::find($session->payment_id);
+        if (!$payment || !$payment->isPaid()) {
+            return;
+        }
+
+        try {
+            $paymentService->refund($payment, null, $reason);
+        } catch (\Throwable $e) {
+            Log::error('Auto-refund failed', [
+                'session_uuid' => $session->uuid,
+                'payment_uuid' => $payment->uuid,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 }

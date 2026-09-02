@@ -208,6 +208,8 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::put('/{uuid}/status', [AppointmentController::class, 'updateStatus']);
         Route::put('/{uuid}/end-visit', [AppointmentController::class, 'endVisit']);
         Route::post('/{uuid}/reschedule', [AppointmentController::class, 'reschedule']);
+        Route::patch('/{uuid}/reschedule/accept', [AppointmentController::class, 'acceptReschedule'])->middleware('role:vet');
+        Route::patch('/{uuid}/reschedule/reject', [AppointmentController::class, 'rejectReschedule'])->middleware('role:vet');
     });
 
     // Waitlist

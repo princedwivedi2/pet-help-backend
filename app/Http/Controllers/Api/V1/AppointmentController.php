@@ -473,9 +473,54 @@ class AppointmentController extends Controller
                 $request->only(['scheduled_at', 'reason', 'timezone'])
             );
 
-            return $this->success('Appointment rescheduled successfully', [
-                'appointment' => $updated,
-            ]);
+            $isPending = $updated->hasPendingRescheduleRequest();
+
+            return $this->success(
+                $isPending
+                    ? 'Reschedule requested — waiting for the vet to accept'
+                    : 'Appointment rescheduled successfully',
+                ['appointment' => $updated]
+            );
+        } catch (\DomainException $e) {
+            return $this->error($e->getMessage(), null, 422);
+        }
+    }
+
+    /**
+     * Accept a pending reschedule request (vet action).
+     * PATCH /api/v1/appointments/{uuid}/reschedule/accept
+     */
+    public function acceptReschedule(Request $request, string $uuid): JsonResponse
+    {
+        $appointment = $this->appointmentService->findByReference($uuid);
+        if (!$appointment) {
+            return $this->notFound('Appointment not found');
+        }
+
+        try {
+            $updated = $this->appointmentService->acceptRescheduleRequest($appointment, $request->user());
+            return $this->success('Reschedule accepted', ['appointment' => $updated]);
+        } catch (\DomainException $e) {
+            return $this->error($e->getMessage(), null, 422);
+        }
+    }
+
+    /**
+     * Decline a pending reschedule request (vet action).
+     * PATCH /api/v1/appointments/{uuid}/reschedule/reject
+     */
+    public function rejectReschedule(Request $request, string $uuid): JsonResponse
+    {
+        $request->validate(['reason' => ['nullable', 'string', 'max:500']]);
+
+        $appointment = $this->appointmentService->findByReference($uuid);
+        if (!$appointment) {
+            return $this->notFound('Appointment not found');
+        }
+
+        try {
+            $updated = $this->appointmentService->rejectRescheduleRequest($appointment, $request->user(), $request->reason);
+            return $this->success('Reschedule declined', ['appointment' => $updated]);
         } catch (\DomainException $e) {
             return $this->error($e->getMessage(), null, 422);
         }

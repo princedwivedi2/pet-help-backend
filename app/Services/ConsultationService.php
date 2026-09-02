@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Contracts\ChatMessageBroadcaster;
 use App\Contracts\VideoProviderInterface;
+use App\Models\Appointment;
 use App\Models\ConsultationMessage;
 use App\Models\ConsultationSession;
 use App\Models\Payment;
@@ -35,6 +36,12 @@ class ConsultationService
 {
     /** Auto-refund kicks in after this many connection failures. */
     public const CONNECTION_FAILURE_THRESHOLD = 3;
+
+    /** Scheduled (slot-booked) consults: how early either party may join before scheduled_at. */
+    public const SCHEDULED_JOIN_EARLY_MINUTES = 10;
+
+    /** Scheduled consults: how long after scheduled_at the join window stays open before the slot is missed. */
+    public const SCHEDULED_JOIN_GRACE_MINUTES = 10;
 
     public function __construct(
         private VideoProviderInterface $videoProvider,
@@ -74,6 +81,45 @@ class ConsultationService
                 ['modality' => $modality, 'issue_category' => $issueCategory],
                 'Instant consultation created'
             );
+
+            return $session;
+        });
+    }
+
+    /**
+     * Create (idempotently) the ConsultationSession backing a scheduled ("online")
+     * appointment, once the vet has accepted/confirmed it. The vet is already known
+     * from the booking, so this session starts in 'matched' status — no broadcast
+     * matching needed. Joinability is time-gated by join() against the appointment's
+     * scheduled_at, not by vet_no_show_check_at (which is instant-consult specific).
+     *
+     * Safe to call more than once for the same appointment (e.g. accept() then
+     * confirm()) — returns the existing session unchanged if already created.
+     */
+    public function createScheduledSession(Appointment $appointment): ConsultationSession
+    {
+        return DB::transaction(function () use ($appointment) {
+            $existing = ConsultationSession::where('appointment_id', $appointment->id)->first();
+            if ($existing) {
+                return $existing;
+            }
+
+            $session = ConsultationSession::create([
+                'user_id' => $appointment->user_id,
+                'vet_profile_id' => $appointment->vet_profile_id,
+                'pet_id' => $appointment->pet_id,
+                'origin' => 'scheduled',
+                'appointment_id' => $appointment->id,
+                'modality' => 'video',
+                'issue_category' => null,
+                'issue_description' => $appointment->reason,
+                'status' => 'matched',
+                'matched_at' => now(),
+                'fee_amount' => $appointment->fee_amount,
+                'payment_id' => $appointment->payment?->id,
+            ]);
+
+            $this->logSystemEvent($session, $appointment->vetProfile?->user_id ?? $appointment->user_id, 'Scheduled consultation session created');
 
             return $session;
         });
@@ -139,18 +185,49 @@ class ConsultationService
      */
     public function join(ConsultationSession $session, User $user, string $role): array
     {
+        $session = $this->markJoined($session, $role);
+        $token = $this->videoProvider->generateJoinToken($session, $role, $user->id);
+
+        return [
+            'session' => $session,
+            'room_provider' => $session->room_provider,
+            'room_id' => $session->room_id,
+            'token' => $token,
+            'role' => $role,
+        ];
+    }
+
+    /**
+     * Records that a participant has joined (or is fetching their RTC token to join)
+     * this session: validates it's joinable, enforces the scheduled-slot window when
+     * applicable, stamps the relevant *_joined_at column, and flips status to
+     * 'joining'/'active' once both sides are present.
+     *
+     * Shared by join() (POST /consultations/{uuid}/join) and the Agora rtc-token
+     * endpoint — both are "the moment this participant enters the call" from the
+     * client's point of view, and either can be called first.
+     */
+    public function markJoined(ConsultationSession $session, string $role): ConsultationSession
+    {
         if (!in_array($role, ['user', 'vet'], true)) {
             throw new \InvalidArgumentException('role must be user or vet');
         }
 
-        return DB::transaction(function () use ($session, $user, $role) {
+        return DB::transaction(function () use ($session, $role) {
             $session = ConsultationSession::where('id', $session->id)->lockForUpdate()->first();
 
             if (!$session->isActive() && $session->status !== 'matched') {
                 throw new \DomainException('Session is not joinable in status: ' . $session->status);
             }
 
-            $token = $this->videoProvider->generateJoinToken($session, $role, $user->id);
+            // Only gate the *initial* join against the slot window — once both sides
+            // have joined at least once, later token refreshes/rejoins during an
+            // already-active call must not be cut off just because the original
+            // window has since elapsed.
+            $alreadyBothJoined = $session->user_joined_at && $session->vet_joined_at;
+            if ($session->origin === 'scheduled' && !$alreadyBothJoined) {
+                $this->assertWithinScheduledJoinWindow($session);
+            }
 
             $updates = ['status' => 'joining'];
             if ($role === 'vet' && !$session->vet_joined_at) {
@@ -170,13 +247,7 @@ class ConsultationService
 
             $session->update($updates);
 
-            return [
-                'session' => $session->fresh(),
-                'room_provider' => $session->room_provider,
-                'room_id' => $session->room_id,
-                'token' => $token,
-                'role' => $role,
-            ];
+            return $session->fresh();
         });
     }
 
@@ -261,6 +332,63 @@ class ConsultationService
             if ($session->vet_joined_at) return false;
 
             $this->failInternal($session, 'vet_no_show_10min');
+            return true;
+        });
+    }
+
+    /**
+     * Throws if `now` is outside the scheduled join window for this appointment-linked
+     * session: [scheduled_at - SCHEDULED_JOIN_EARLY_MINUTES, scheduled_at + SCHEDULED_JOIN_GRACE_MINUTES].
+     * No-op (never throws) if the session isn't linked to an appointment.
+     */
+    private function assertWithinScheduledJoinWindow(ConsultationSession $session): void
+    {
+        $appointment = $session->appointment;
+        if (!$appointment || !$appointment->scheduled_at) {
+            return;
+        }
+
+        $windowStart = $appointment->scheduled_at->copy()->subMinutes(self::SCHEDULED_JOIN_EARLY_MINUTES);
+        $windowEnd = $appointment->scheduled_at->copy()->addMinutes(self::SCHEDULED_JOIN_GRACE_MINUTES);
+        $now = now();
+
+        if ($now->lt($windowStart)) {
+            throw new \DomainException(
+                'This call opens ' . self::SCHEDULED_JOIN_EARLY_MINUTES . ' minutes before your scheduled time, at '
+                . $windowStart->format('g:i A') . '.'
+            );
+        }
+
+        if ($now->gt($windowEnd)) {
+            throw new \DomainException(
+                'The scheduled window for this call has passed. Please request a reschedule.'
+            );
+        }
+    }
+
+    /**
+     * Watchdog counterpart to expireIfVetNoShow() for scheduled (slot-booked) sessions:
+     * if the join window has closed and both parties never joined, expire the session
+     * (refund handled by the caller, same as the instant-consult no-show path).
+     */
+    public function expireIfScheduledWindowMissed(ConsultationSession $session): bool
+    {
+        return DB::transaction(function () use ($session) {
+            $session = ConsultationSession::where('id', $session->id)->lockForUpdate()->first();
+            if (!in_array($session->status, ['matched', 'joining'], true)) return false;
+            if ($session->user_joined_at && $session->vet_joined_at) return false;
+
+            $appointment = $session->appointment;
+            if (!$appointment || !$appointment->scheduled_at) return false;
+
+            $windowEnd = $appointment->scheduled_at->copy()->addMinutes(self::SCHEDULED_JOIN_GRACE_MINUTES);
+            if ($windowEnd->isFuture()) return false;
+
+            $reason = !$session->vet_joined_at && !$session->user_joined_at
+                ? 'scheduled_window_missed_both'
+                : (!$session->vet_joined_at ? 'scheduled_window_missed_vet' : 'scheduled_window_missed_user');
+
+            $this->failInternal($session, $reason);
             return true;
         });
     }

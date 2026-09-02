@@ -371,6 +371,15 @@ class ConsultationController extends Controller
             return $this->forbidden('Unauthorized');
         }
 
+        // Record this as the participant joining (enforces the scheduled join
+        // window for slot-booked consults, and flips the session to
+        // joining/active once both sides have fetched a token).
+        try {
+            $this->consultationService->markJoined($consultation, $isAssignedVet ? 'vet' : 'user');
+        } catch (\DomainException $e) {
+            return $this->error($e->getMessage(), null, 422);
+        }
+
         $ttl     = 3600; // 1 hour
         $channel = 'consultation_' . str_replace('-', '', $consultation->uuid);
         $uid     = $user->id;

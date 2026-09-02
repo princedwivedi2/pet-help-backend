@@ -6,6 +6,7 @@ use App\Models\Appointment;
 use App\Models\User;
 use App\Models\VetProfile;
 use App\Notifications\AppointmentBookedNotification;
+use App\Notifications\AppointmentRescheduleNotification;
 use App\Notifications\AppointmentStatusNotification;
 use Carbon\Carbon;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -15,6 +16,9 @@ use Illuminate\Support\Facades\Log;
 class AppointmentService
 {
     private const USER_CANCELLATION_CUTOFF_HOURS = 2;
+
+    /** Max owner-initiated reschedule requests awaiting a vet decision, per appointment. */
+    private const MAX_RESCHEDULE_COUNT = 3;
 
     /**
      * Valid appointment status transitions.
@@ -33,7 +37,8 @@ class AppointmentService
     ];
 
     public function __construct(
-        private AuditService $auditService
+        private AuditService $auditService,
+        private ConsultationService $consultationService
     ) {}
 
     /**
@@ -297,6 +302,13 @@ class AppointmentService
             // Centralized completed_appointments increment (LOW-04)
             if ($targetStatus === 'completed') {
                 $appointment->vetProfile?->increment('completed_appointments');
+            }
+
+            // Once a vet has committed to an online (video) appointment, create the
+            // linked ConsultationSession so it can be joined within its slot window.
+            // Idempotent — createScheduledSession() no-ops if one already exists.
+            if (in_array($targetStatus, ['accepted', 'confirmed'], true) && $appointment->isOnline()) {
+                $this->consultationService->createScheduledSession($appointment);
             }
 
             // Audit log
@@ -594,6 +606,13 @@ class AppointmentService
      * Reschedule an appointment to a new time.
      * Max 3 reschedules allowed per appointment.
      */
+    /**
+     * Reschedule an appointment — Google-Meet-style "propose new time":
+     *   - Vet-initiated: applies immediately (the vet already committed to the slot).
+     *   - Owner-initiated: held as a pending request; scheduled_at does NOT change
+     *     until the vet accepts it via acceptRescheduleRequest(). This is the
+     *     "lock tightly" behavior — an owner can't unilaterally move a vet's slot.
+     */
     public function reschedule(Appointment $appointment, User $user, array $data): Appointment
     {
         return DB::transaction(function () use ($appointment, $user, $data) {
@@ -605,8 +624,8 @@ class AppointmentService
             }
 
             // Check reschedule limit
-            if ($appointment->reschedule_count >= 3) {
-                throw new \DomainException('Maximum reschedule limit (3) reached. Please cancel and create a new appointment.');
+            if ($appointment->reschedule_count >= self::MAX_RESCHEDULE_COUNT) {
+                throw new \DomainException('Maximum reschedule limit (' . self::MAX_RESCHEDULE_COUNT . ') reached. Please cancel and create a new appointment.');
             }
 
             // Validate user is owner or vet
@@ -623,70 +642,28 @@ class AppointmentService
                 throw new \DomainException('Cannot reschedule to a past time.');
             }
 
-            // Check for conflicts with other appointments
-            $durationMinutes = $appointment->duration_minutes ?? 30;
-            $newEnd = (clone $newScheduledAt)->addMinutes($durationMinutes);
+            $this->assertNoScheduleConflict($appointment, $newScheduledAt);
 
-            $driver = DB::getDriverName();
-            $conflict = Appointment::where('vet_profile_id', $appointment->vet_profile_id)
-                ->where('id', '!=', $appointment->id)
-                ->whereIn('status', ['pending', 'accepted', 'confirmed', 'in_progress'])
-                ->lockForUpdate()
-                ->where(function ($q) use ($newScheduledAt, $newEnd, $driver) {
-                    if ($driver === 'sqlite') {
-                        $q->whereRaw('scheduled_at < ?', [$newEnd])
-                          ->whereRaw("julianday(scheduled_at, '+' || duration_minutes || ' minutes') > julianday(?)", [$newScheduledAt]);
-                    } else {
-                        $q->where('scheduled_at', '<', $newEnd)
-                          ->whereRaw('DATE_ADD(scheduled_at, INTERVAL duration_minutes MINUTE) > ?', [$newScheduledAt]);
-                    }
-                })
-                ->exists();
-
-            if ($conflict) {
-                throw new \DomainException('The new time slot conflicts with an existing booking.');
+            if ($isVet) {
+                return $this->applyReschedule($appointment, $user, $newScheduledAt, $data['reason'] ?? null, $data['timezone'] ?? null);
             }
 
-            $previousScheduledAt = $appointment->scheduled_at;
-
-            // Update appointment
+            // Owner path: hold as a pending request, don't touch scheduled_at yet.
             $appointment->update([
-                'scheduled_at' => $newScheduledAt,
-                'original_scheduled_at' => $appointment->original_scheduled_at ?? $previousScheduledAt,
-                'reschedule_count' => $appointment->reschedule_count + 1,
-                'reschedule_reason' => $data['reason'] ?? null,
-                'timezone' => $data['timezone'] ?? $appointment->timezone ?? 'Asia/Kolkata',
+                'reschedule_requested_at' => now(),
+                'reschedule_requested_scheduled_at' => $newScheduledAt,
+                'reschedule_requested_reason' => $data['reason'] ?? null,
+                'reschedule_requested_by' => 'user',
             ]);
 
-            // Audit log
-            $this->auditService->log(
-                $user->id,
-                Appointment::class,
-                $appointment->id,
-                'rescheduled',
-                ['scheduled_at' => $previousScheduledAt->toIso8601String()],
-                ['scheduled_at' => $newScheduledAt->toIso8601String(), 'reason' => $data['reason'] ?? null],
-                "Appointment rescheduled (#{$appointment->reschedule_count})"
-            );
-
-            Log::info('Appointment rescheduled', [
+            Log::info('Appointment reschedule requested', [
                 'appointment_uuid' => $appointment->uuid,
-                'from' => $previousScheduledAt->toIso8601String(),
-                'to' => $newScheduledAt->toIso8601String(),
-                'reschedule_count' => $appointment->reschedule_count,
+                'requested_scheduled_at' => $newScheduledAt->toIso8601String(),
             ]);
 
-            // Notify the other party
             try {
-                $notifyUser = $isOwner
-                    ? $appointment->vetProfile?->user
-                    : $appointment->user;
-
-                $notifyUser?->notify(
-                    new AppointmentStatusNotification($appointment, 'rescheduled', [
-                        'previous_time' => $previousScheduledAt->toIso8601String(),
-                        'new_time' => $newScheduledAt->toIso8601String(),
-                    ])
+                $appointment->vetProfile?->user?->notify(
+                    new AppointmentRescheduleNotification($appointment, 'requested', $newScheduledAt->toIso8601String(), $data['reason'] ?? null)
                 );
             } catch (\Throwable $e) {
                 report($e);
@@ -694,6 +671,168 @@ class AppointmentService
 
             return $appointment->fresh(['user:id,name', 'vetProfile:id,user_id,uuid,clinic_name,vet_name', 'pet:id,name,species', 'consultationSession:id,appointment_id,uuid']);
         });
+    }
+
+    /**
+     * Vet accepts a pet owner's pending reschedule request — applies the proposed time.
+     */
+    public function acceptRescheduleRequest(Appointment $appointment, User $vetUser): Appointment
+    {
+        return DB::transaction(function () use ($appointment, $vetUser) {
+            $appointment = Appointment::where('id', $appointment->id)->lockForUpdate()->first();
+
+            if (!$appointment->hasPendingRescheduleRequest()) {
+                throw new \DomainException('There is no pending reschedule request on this appointment.');
+            }
+
+            $isVet = $vetUser->isVet() && $vetUser->vetProfile?->id === $appointment->vet_profile_id;
+            if (!$isVet) {
+                throw new \DomainException('Only the assigned vet can accept a reschedule request.');
+            }
+
+            $newScheduledAt = $appointment->reschedule_requested_scheduled_at;
+            $reason = $appointment->reschedule_requested_reason;
+
+            if ($newScheduledAt->isPast()) {
+                // The requested slot has since passed — clear it rather than applying a stale time.
+                $appointment->update([
+                    'reschedule_requested_at' => null,
+                    'reschedule_requested_scheduled_at' => null,
+                    'reschedule_requested_reason' => null,
+                    'reschedule_requested_by' => null,
+                ]);
+                throw new \DomainException('The requested time has already passed. Ask the pet owner to request a new time.');
+            }
+
+            $this->assertNoScheduleConflict($appointment, $newScheduledAt);
+
+            $updated = $this->applyReschedule($appointment, $vetUser, $newScheduledAt, $reason, null);
+
+            $updated->update([
+                'reschedule_requested_at' => null,
+                'reschedule_requested_scheduled_at' => null,
+                'reschedule_requested_reason' => null,
+                'reschedule_requested_by' => null,
+            ]);
+
+            try {
+                $updated->user?->notify(new AppointmentRescheduleNotification($updated, 'accepted', $newScheduledAt->toIso8601String()));
+            } catch (\Throwable $e) {
+                report($e);
+            }
+
+            return $updated->fresh(['user:id,name', 'vetProfile:id,user_id,uuid,clinic_name,vet_name', 'pet:id,name,species', 'consultationSession:id,appointment_id,uuid']);
+        });
+    }
+
+    /**
+     * Vet declines a pet owner's pending reschedule request — the original slot stands.
+     */
+    public function rejectRescheduleRequest(Appointment $appointment, User $vetUser, ?string $reason = null): Appointment
+    {
+        return DB::transaction(function () use ($appointment, $vetUser, $reason) {
+            $appointment = Appointment::where('id', $appointment->id)->lockForUpdate()->first();
+
+            if (!$appointment->hasPendingRescheduleRequest()) {
+                throw new \DomainException('There is no pending reschedule request on this appointment.');
+            }
+
+            $isVet = $vetUser->isVet() && $vetUser->vetProfile?->id === $appointment->vet_profile_id;
+            if (!$isVet) {
+                throw new \DomainException('Only the assigned vet can decline a reschedule request.');
+            }
+
+            $appointment->update([
+                'reschedule_requested_at' => null,
+                'reschedule_requested_scheduled_at' => null,
+                'reschedule_requested_reason' => null,
+                'reschedule_requested_by' => null,
+            ]);
+
+            Log::info('Appointment reschedule request declined', ['appointment_uuid' => $appointment->uuid]);
+
+            try {
+                $appointment->user?->notify(new AppointmentRescheduleNotification($appointment, 'rejected', null, $reason));
+            } catch (\Throwable $e) {
+                report($e);
+            }
+
+            return $appointment->fresh(['user:id,name', 'vetProfile:id,user_id,uuid,clinic_name,vet_name', 'pet:id,name,species', 'consultationSession:id,appointment_id,uuid']);
+        });
+    }
+
+    /**
+     * Shared conflict check used by both the direct (vet) reschedule path and
+     * accepting an owner's pending request.
+     */
+    private function assertNoScheduleConflict(Appointment $appointment, Carbon $newScheduledAt): void
+    {
+        $durationMinutes = $appointment->duration_minutes ?? 30;
+        $newEnd = (clone $newScheduledAt)->addMinutes($durationMinutes);
+
+        $driver = DB::getDriverName();
+        $conflict = Appointment::where('vet_profile_id', $appointment->vet_profile_id)
+            ->where('id', '!=', $appointment->id)
+            ->whereIn('status', ['pending', 'accepted', 'confirmed', 'in_progress'])
+            ->lockForUpdate()
+            ->where(function ($q) use ($newScheduledAt, $newEnd, $driver) {
+                if ($driver === 'sqlite') {
+                    $q->whereRaw('scheduled_at < ?', [$newEnd])
+                      ->whereRaw("julianday(scheduled_at, '+' || duration_minutes || ' minutes') > julianday(?)", [$newScheduledAt]);
+                } else {
+                    $q->where('scheduled_at', '<', $newEnd)
+                      ->whereRaw('DATE_ADD(scheduled_at, INTERVAL duration_minutes MINUTE) > ?', [$newScheduledAt]);
+                }
+            })
+            ->exists();
+
+        if ($conflict) {
+            throw new \DomainException('The new time slot conflicts with an existing booking.');
+        }
+    }
+
+    /**
+     * Actually moves scheduled_at and records the change. Used for both the
+     * vet-initiated immediate path and accepting an owner's pending request.
+     */
+    private function applyReschedule(Appointment $appointment, User $actor, Carbon $newScheduledAt, ?string $reason, ?string $timezone): Appointment
+    {
+        $previousScheduledAt = $appointment->scheduled_at;
+        $isOwner = $actor->id === $appointment->user_id;
+
+        $appointment->update([
+            'scheduled_at' => $newScheduledAt,
+            'original_scheduled_at' => $appointment->original_scheduled_at ?? $previousScheduledAt,
+            'reschedule_count' => $appointment->reschedule_count + 1,
+            'reschedule_reason' => $reason,
+            'timezone' => $timezone ?? $appointment->timezone ?? 'Asia/Kolkata',
+        ]);
+
+        $this->auditService->log(
+            $actor->id,
+            Appointment::class,
+            $appointment->id,
+            'rescheduled',
+            ['scheduled_at' => $previousScheduledAt->toIso8601String()],
+            ['scheduled_at' => $newScheduledAt->toIso8601String(), 'reason' => $reason],
+            "Appointment rescheduled (#{$appointment->reschedule_count})"
+        );
+
+        Log::info('Appointment rescheduled', [
+            'appointment_uuid' => $appointment->uuid,
+            'from' => $previousScheduledAt->toIso8601String(),
+            'to' => $newScheduledAt->toIso8601String(),
+            'reschedule_count' => $appointment->reschedule_count,
+        ]);
+
+        try {
+            $notifyUser = $isOwner ? $appointment->vetProfile?->user : $appointment->user;
+            $notifyUser?->notify(new AppointmentStatusNotification($appointment, 'rescheduled'));
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        return $appointment;
     }
 
     /**
