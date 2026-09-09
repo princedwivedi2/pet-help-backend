@@ -263,6 +263,17 @@ class ConsultationService
 
             $session->update($updates);
 
+            // Keep the linked Appointment's status in sync: when a scheduled online
+            // consult actually starts being joined, the appointment should reflect
+            // that it's in progress rather than sitting at accepted/confirmed until
+            // the vet manually taps "Start Consultation" (AppointmentService::startVisit()).
+            if ($session->origin === 'scheduled' && in_array($updates['status'], ['joining', 'active'], true)) {
+                $appointment = $session->appointment;
+                if ($appointment && in_array($appointment->status, ['accepted', 'confirmed'], true)) {
+                    $appointment->update(['status' => 'in_progress']);
+                }
+            }
+
             return $session->fresh();
         });
     }
