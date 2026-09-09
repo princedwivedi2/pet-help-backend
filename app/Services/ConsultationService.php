@@ -63,6 +63,22 @@ class ConsultationService
         ?int $paymentId = null,
     ): ConsultationSession {
         return DB::transaction(function () use ($user, $petId, $modality, $issueCategory, $issueDescription, $feeAmount, $paymentId) {
+            // Idempotency guard: a double-tap / network-retry from the owner app must
+            // not create a second row for the same request — that second row would
+            // independently satisfy ConsultationController::availableForVet's query and
+            // render as a duplicate "Accept" card on the vet app for what is really one
+            // request. Reuse the existing pending session instead of inserting another.
+            $existing = ConsultationSession::where('user_id', $user->id)
+                ->where('origin', 'instant')
+                ->where('status', 'matching')
+                ->lockForUpdate()
+                ->latest('id')
+                ->first();
+
+            if ($existing) {
+                return $existing;
+            }
+
             $session = ConsultationSession::create([
                 'user_id' => $user->id,
                 'pet_id' => $petId,

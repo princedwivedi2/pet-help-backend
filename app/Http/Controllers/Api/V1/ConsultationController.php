@@ -161,8 +161,11 @@ class ConsultationController extends Controller
             })
             ->with(['user:id,name', 'pet:id,name,species'])
             ->orderBy('created_at')
+            ->distinct('id')
             ->limit(20)
-            ->get();
+            ->get()
+            ->unique('uuid')
+            ->values();
 
         return $this->success('Available consultations retrieved', ['consultations' => $sessions]);
     }

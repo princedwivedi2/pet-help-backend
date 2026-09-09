@@ -76,14 +76,26 @@ class AppointmentStatusNotification extends Notification
             'no_show'           => 'You were marked as no-show.',
         ];
 
+        // Route the client to the consultation room when a vet starts an online
+        // visit; every other status change just opens the appointment detail.
+        $isOnlineInProgress = $this->appointment->status === 'in_progress'
+            && $this->appointment->appointment_type === 'online';
+
+        $data = [
+            'type'             => 'appointment_status_changed',
+            'appointment_uuid' => $this->appointment->uuid,
+            'new_status'       => $this->appointment->status,
+            'screen'           => $isOnlineInProgress ? 'ConsultationRoom' : 'AppointmentDetail',
+        ];
+
+        if ($isOnlineInProgress) {
+            $data['consultation_uuid'] = $this->appointment->consultation_uuid;
+        }
+
         return [
             'title' => self::TITLES[$this->appointment->status] ?? 'Appointment Update',
             'body'  => $bodies[$this->appointment->status] ?? 'Your appointment status has changed.',
-            'data'  => [
-                'type'             => 'appointment_status_changed',
-                'appointment_uuid' => $this->appointment->uuid,
-                'new_status'       => $this->appointment->status,
-            ],
+            'data'  => $data,
         ];
     }
 }
