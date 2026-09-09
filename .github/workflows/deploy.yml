@@ -30,18 +30,42 @@ jobs:
     name: SSH deploy
     runs-on: ubuntu-latest
     environment: production
+    env:
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_USER: ${{ secrets.SSH_USER }}
+      SSH_KEY: ${{ secrets.SSH_KEY }}
+      SSH_PORT: ${{ secrets.SSH_PORT }}
+      APP_PATH: ${{ secrets.APP_PATH }}
     steps:
+      - name: Validate deploy secrets
+        id: deploy_secrets
+        run: |
+          missing=0
+          for secret_name in SSH_HOST SSH_USER SSH_KEY APP_PATH; do
+            if [ -z "${!secret_name}" ]; then
+              echo "Missing required secret: $secret_name"
+              missing=1
+            fi
+          done
+          if [ "$missing" -eq 1 ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping deploy because required SSH deploy secrets are not configured."
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Deploy over SSH
+        if: steps.deploy_secrets.outputs.ready == 'true'
         uses: appleboy/ssh-action@v1.2.0
         with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          port: ${{ secrets.SSH_PORT }}
+          host: ${{ env.SSH_HOST }}
+          username: ${{ env.SSH_USER }}
+          key: ${{ env.SSH_KEY }}
+          port: ${{ env.SSH_PORT }}
           script_stop: true
           script: |
             set -e
-            cd "${{ secrets.APP_PATH }}"
+            cd "${{ env.APP_PATH }}"
 
             echo "==> Entering maintenance mode"
             php artisan down --retry=30 || true
